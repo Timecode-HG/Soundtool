@@ -1,0 +1,3424 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+
+<!-- ── PWA / iOS App-Installation ─────────────────────────────
+     Safari: Teilen → „Zum Home-Bildschirm" → installiert als App
+     Verhält sich danach wie eine native App: kein Browser-Chrome,
+     eigenes Icon, Vollbild, offline nutzbar.
+──────────────────────────────────────────────────────────────── -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CineScript">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="application-name" content="CineScript">
+<meta name="theme-color" content="#000000">
+<meta name="description" content="Set-Drehbuch Manager — Aufnahmen tracken, Nurtöne erfassen">
+
+<!-- Web App Manifest -->
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">
+<link rel="apple-touch-icon" sizes="192x192" href="./icon-192.png">
+<link rel="icon" type="image/png" href="./icon-192.png" id="favicon">
+
+<!-- iOS Splash Screens -->
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+<title>CineScript</title>
+<!-- PDF.js wird nicht mehr im <head> geladen — das blockierte Safari
+     bei fehlendem Internet. Stattdessen lazy-loading beim ersten PDF-Import. -->
+<style>
+/* ── TOKENS ─────────────────────────────────────────────────── */
+:root {
+  --bg0:#000;--bg1:#1c1c1e;--bg2:#2c2c2e;--bg3:#3a3a3c;--bg4:#48484a;
+  --label:#fff;--label2:rgba(235,235,245,.6);--label3:rgba(235,235,245,.3);--label4:rgba(235,235,245,.16);
+  --sep:rgba(84,84,88,.65);--sep-o:#38383a;
+  --fill1:rgba(120,120,128,.36);--fill2:rgba(120,120,128,.22);--fill3:rgba(118,118,128,.18);
+  --blue:#0a84ff;--green:#30d158;--red:#ff453a;--orange:#ff9f0a;--purple:#bf5af2;--teal:#40cbe0;
+  --font:-apple-system,BlinkMacSystemFont,'SF Pro Display','Helvetica Neue',sans-serif;
+  --mono:'Helvetica Neue',Helvetica,Arial,sans-serif;
+  --r8:8px;--r10:10px;--r12:12px;--r16:16px;--r20:20px;
+  --shadow:0 2px 16px rgba(0,0,0,.5);--shadow-lg:0 8px 40px rgba(0,0,0,.65);
+  --st:env(safe-area-inset-top,0px);--sb:env(safe-area-inset-bottom,0px);
+  --sl:env(safe-area-inset-left,0px);--sr:env(safe-area-inset-right,0px);
+  --nb:52px;--tb:83px;--sw:290px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+button,a,[onclick]{touch-action:manipulation;cursor:pointer;}
+button{-webkit-appearance:none;}
+html{height:100%}
+body{
+  height:100%;overflow:hidden;
+  background:var(--bg0);color:var(--label);
+  font-family:var(--font);font-size:16px;
+  -webkit-font-smoothing:antialiased;
+}
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--fill1);border-radius:2px}
+
+/* ── LOADING ────────────────────────────────────────────────── */
+#loading{
+  display:none;position:fixed;inset:0;z-index:9999;
+  background:rgba(0,0,0,.88);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+  align-items:center;justify-content:center;flex-direction:column;gap:14px;
+}
+#loading.on{display:flex}
+#loading p{font-size:13px;color:var(--label2);letter-spacing:.04em;margin-top:4px}
+.spin{width:36px;height:36px;border:2px solid var(--fill1);border-top-color:var(--blue);border-radius:50%;animation:spin .75s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+/* ── TOAST ──────────────────────────────────────────────────── */
+#toast{
+  display:none;position:fixed;bottom:calc(var(--tb) + 12px + var(--sb));left:50%;
+  transform:translateX(-50%);z-index:900;
+  background:var(--bg3);border-radius:var(--r12);padding:11px 20px;
+  font-size:14px;font-weight:500;white-space:nowrap;
+  box-shadow:var(--shadow-lg);max-width:90vw;text-align:center;
+}
+@media(min-width:768px){
+  #toast{left:auto;right:20px;transform:none;bottom:20px}
+}
+#toast.on{display:block}
+#toast.ok{color:var(--green)}
+#toast.warn{color:var(--orange)}
+#toast.err{color:var(--red)}
+
+/* ── MODAL ──────────────────────────────────────────────────── */
+#movl{display:none;position:fixed;inset:0;z-index:800;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);align-items:flex-end;justify-content:center}
+@media(min-width:768px){#movl{align-items:center}}
+#movl.on{display:flex}
+#modal{
+  background:var(--bg2);width:100%;max-width:480px;
+  border-radius:var(--r20) var(--r20) 0 0;
+  padding:20px 20px calc(20px + var(--sb)) 20px;
+  max-height:85vh;overflow-y:auto;
+}
+@media(min-width:768px){
+  #modal{border-radius:var(--r20);padding:28px;max-height:70vh}
+}
+#modal h3{font-size:17px;font-weight:700;margin-bottom:18px;color:var(--label)}
+.crow{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--sep)}
+.crow:last-child{border-bottom:none}
+.crow span{font-size:15px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.crow input[type=color]{width:38px;height:34px;border:none;border-radius:var(--r8);cursor:pointer;padding:2px;background:none;-webkit-appearance:none}
+
+/* ── APP SHELL ──────────────────────────────────────────────── */
+/* position:fixed + --dvh ist das zuverlässigste Muster für
+   Vollbild-Webanwendungen auf iOS Safari.
+   --dvh = window.innerHeight (per JS gesetzt), vermeidet den
+   100vh-Bug bei dem Safaris eigene Toolbar mitgezählt wird.    */
+#app{
+  position:fixed;top:0;left:0;right:0;
+  height:var(--dvh,100vh);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+
+/* ── NAVBAR ─────────────────────────────────────────────────── */
+#navbar{
+  flex-shrink:0;height:calc(var(--nb) + var(--st));
+  padding-top:var(--st);padding-left:calc(12px + var(--sl));padding-right:calc(12px + var(--sr));
+  background:rgba(28,28,30,.85);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);
+  border-bottom:0.5px solid var(--sep);
+  display:flex;align-items:flex-end;padding-bottom:8px;gap:8px;position:relative;z-index:100;
+}
+#nb-left{display:flex;align-items:center;gap:6px;flex-shrink:0;min-width:80px}
+#nb-title{
+  position:absolute;left:50%;transform:translateX(-50%);bottom:8px;
+  font-size:17px;font-weight:700;letter-spacing:-.3px;white-space:nowrap;
+}
+#nb-right{display:flex;align-items:center;gap:6px;margin-left:auto;flex-shrink:0;min-width:80px;justify-content:flex-end}
+.nb-btn{
+  background:var(--fill2);border:none;color:var(--blue);cursor:pointer;
+  border-radius:var(--r8);padding:6px 12px;font-size:14px;font-weight:600;
+  white-space:nowrap;min-height:34px;display:flex;align-items:center;gap:5px;
+  transition:opacity .15s;
+}
+.nb-btn:active{opacity:.6}
+.nb-btn.icon{padding:6px 10px;font-size:16px}
+.nb-btn.destructive{color:var(--red)}
+#nb-prog{font-size:13px;font-weight:600;color:var(--orange);letter-spacing:.02em;min-width:36px;text-align:right}
+#gbar-track{width:52px;height:3px;background:var(--fill2);border-radius:2px;overflow:hidden}
+#gfill{height:100%;background:var(--orange);transition:width .4s;width:0}
+
+/* ── BODY ───────────────────────────────────────────────────── */
+#body{display:flex;flex:1;overflow:hidden;position:relative}
+
+/* ── SIDEBAR ────────────────────────────────────────────────── */
+#sidebar{
+  display:none; /* hidden on mobile by default */
+  width:var(--sw);flex-shrink:0;
+  background:var(--bg1);border-right:0.5px solid var(--sep);
+  flex-direction:column;overflow:hidden;
+}
+/* Mobile sidebar as overlay */
+#sidebar.mobile-open{
+  display:flex;position:absolute;top:0;left:0;bottom:0;z-index:50;
+  box-shadow:var(--shadow-lg);
+}
+#sidebar-backdrop{
+  display:none;position:absolute;inset:0;z-index:49;background:rgba(0,0,0,.5);
+}
+#sidebar-backdrop.on{display:block}
+@media(min-width:768px){
+  #sidebar{display:flex}
+  #sidebar-backdrop{display:none!important}
+}
+.sidebar-hd{
+  padding:14px 16px 10px;font-size:11px;font-weight:600;letter-spacing:.07em;
+  color:var(--label3);text-transform:uppercase;flex-shrink:0;
+}
+#ptree-wrap{flex:0 0 auto;max-height:46%;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y}
+#ptree{padding:0 0 8px}
+#snav-wrap{flex:1;overflow-y:auto;min-height:0;-webkit-overflow-scrolling:touch;touch-action:pan-y}
+#snav{padding:0 0 8px}
+
+/* Project tree rows */
+.prow{
+  display:flex;align-items:center;gap:8px;
+  padding:10px 16px;cursor:pointer;transition:background .12s;
+}
+.prow:active{background:var(--fill3)}
+.prow.active{background:rgba(10,132,255,.12)}
+.prow-icon{font-size:14px;flex-shrink:0}
+.prow-name{flex:1;font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prow.active .prow-name{color:var(--blue)}
+.prow-acts{display:flex;gap:2px;opacity:0;transition:opacity .15s}
+.prow:hover .prow-acts{opacity:1}
+.prow-acts button{background:none;border:none;color:var(--label3);font-size:13px;cursor:pointer;padding:2px 5px;border-radius:5px;transition:.12s}
+.prow-acts button:hover{color:var(--label2)}
+.prow-acts button.d:hover{color:var(--red)}
+
+.srow{
+  display:flex;align-items:center;gap:8px;
+  padding:8px 16px 8px 28px;cursor:pointer;transition:background .12s;
+  border-left:2px solid transparent;
+}
+.srow:active{background:var(--fill3)}
+.srow.on{background:rgba(10,132,255,.1);border-left-color:var(--blue)}
+.srow .srow-icon{font-size:11px;flex-shrink:0;opacity:.5}
+.srow-name{flex:1;font-size:13px;color:var(--label2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.srow.on .srow-name{color:var(--blue)}
+.nt-badge{
+  background:var(--red);color:#fff;border-radius:9px;font-size:10px;font-weight:700;
+  padding:1px 6px;min-width:18px;text-align:center;flex-shrink:0;
+}
+.srow-del{color:var(--label4);font-size:12px;cursor:pointer;opacity:0;transition:.12s;padding:2px 4px}
+.srow:hover .srow-del{opacity:1}
+.srow-del:hover{color:var(--red)!important}
+.add-sc-btn{
+  display:flex;align-items:center;gap:6px;padding:8px 16px 8px 28px;
+  font-size:13px;color:var(--blue);cursor:pointer;transition:.12s;
+}
+.add-sc-btn:active{opacity:.6}
+.add-proj-btn{
+  display:flex;align-items:center;gap:6px;padding:12px 16px;
+  font-size:14px;font-weight:500;color:var(--blue);cursor:pointer;
+  border-top:0.5px solid var(--sep);transition:.12s;margin-top:4px;
+}
+.add-proj-btn:active{opacity:.6}
+
+/* Scene nav */
+.scn{
+  padding:8px 16px;cursor:pointer;border-left:3px solid transparent;transition:.12s;
+}
+.scn:active{background:var(--fill3)}
+.scn.on{background:rgba(10,132,255,.1);border-left-color:var(--blue)}
+.scn-lbl{font-size:12px;color:var(--label2);line-height:1.4;margin-bottom:4px;font-weight:500}
+.scn.on .scn-lbl{color:var(--blue)}
+.pt{height:2px;background:var(--fill2);border-radius:1px;overflow:hidden;margin-bottom:2px}
+.pf{height:100%;border-radius:1px;transition:width .3s}
+.pl{font-size:10px;color:var(--label3);font-weight:500}
+
+/* ── MAIN ───────────────────────────────────────────────────── */
+#main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+
+/* Segmented control (iPad+) */
+#seg-wrap{
+  display:none;flex-shrink:0;padding:10px 16px;
+  background:var(--bg1);border-bottom:0.5px solid var(--sep);
+}
+@media(min-width:768px){#seg-wrap{display:flex;align-items:center;gap:12px}}
+#seg-ctrl{
+  display:flex;background:var(--fill3);border-radius:var(--r10);padding:2px;flex:1;max-width:280px;
+}
+.seg-btn{
+  flex:1;padding:6px;border:none;background:none;color:var(--label2);
+  border-radius:var(--r8);font-size:13px;font-weight:600;cursor:pointer;transition:.2s;
+}
+.seg-btn.on{background:var(--bg3);color:var(--label);box-shadow:0 1px 4px rgba(0,0,0,.4)}
+#seg-right{display:flex;align-items:center;gap:8px;margin-left:auto}
+.icon-btn{
+  background:var(--fill2);border:none;color:var(--label2);cursor:pointer;
+  border-radius:var(--r8);width:34px;height:34px;font-size:15px;
+  display:flex;align-items:center;justify-content:center;transition:.15s;
+}
+.icon-btn:hover{background:var(--fill1)}
+.icon-btn:active{opacity:.6}
+
+/* ── TAB CONTENT AREAS ──────────────────────────────────────── */
+.tab-pane{flex:1;display:none;flex-direction:column;overflow:hidden}
+.tab-pane.on{display:flex}
+
+/* ── SCRIPT TAB ─────────────────────────────────────────────── */
+#mode-toolbar{
+  flex-shrink:0;background:rgba(28,28,30,.92);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border-bottom:0.5px solid var(--sep);
+  padding:8px 12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+}
+@media(max-width:520px){
+  #mode-toolbar{padding:6px 10px;gap:5px}
+  #mode-toolbar .mode-pill-row{display:contents}
+}
+.mode-pill{
+  display:flex;align-items:center;gap:5px;
+  background:var(--fill3);border:none;color:var(--label2);
+  padding:7px 12px;border-radius:var(--r20);font-size:13px;font-weight:600;
+  cursor:pointer;transition:.15s;min-height:36px;flex-shrink:0;
+}
+/* Auf kleinen Bildschirmen: kürzere Pill-Beschriftung per data-short */
+@media(max-width:520px){
+  .mode-pill{padding:6px 10px;font-size:12px;min-height:32px;flex:1;justify-content:center}
+  .mode-pill .pill-full{display:none}
+  .mode-pill .pill-short{display:inline}
+}
+@media(min-width:521px){
+  .mode-pill .pill-short{display:none}
+  .mode-pill .pill-full{display:inline}
+}
+.mode-pill:active{opacity:.6}
+.mode-pill.on.d{background:rgba(10,132,255,.2);color:var(--blue)}
+.mode-pill.on.g{background:rgba(48,209,88,.18);color:var(--green)}
+.mode-pill.on.w{background:rgba(255,159,10,.2);color:var(--orange)}
+#srch-wrap{
+  display:flex;align-items:center;gap:0;background:var(--fill3);
+  border-radius:var(--r10);flex:1;min-width:100px;max-width:280px;margin-left:auto;
+}
+@media(max-width:520px){
+  #srch-wrap{max-width:100%;margin-left:0;order:10;width:100%;flex-basis:100%}
+}
+#srch{
+  background:none;border:none;color:var(--label);padding:8px 12px;
+  font-size:15px;width:100%;outline:none;font-family:var(--font);
+}
+#srch::placeholder{color:var(--label3)}
+#cwrap{display:flex;flex-wrap:wrap;gap:4px;padding:4px 14px 8px;flex-shrink:0;
+  max-width:100%;overflow:hidden;-webkit-overflow-scrolling:touch;
+  background:rgba(28,28,30,.92);border-bottom:0.5px solid var(--sep);
+  max-height:200px;transition:max-height .22s ease, padding .22s ease, border .22s ease;
+}
+#cwrap.collapsed{max-height:0;padding-top:0;padding-bottom:0;border-bottom-color:transparent}
+#cwrap:empty{display:none}
+/* Collapse-Leiste immer sichtbar wenn Chips vorhanden */
+#chips-bar{
+  display:none;flex-shrink:0;align-items:center;justify-content:center;
+  background:rgba(28,28,30,.92);border-bottom:0.5px solid var(--sep);
+  padding:0;
+}
+#chips-bar.visible{display:flex}
+#chips-toggle{
+  width:100%;padding:3px 14px;background:none;border:none;cursor:pointer;
+  display:flex;align-items:center;gap:5px;font-family:var(--font);
+  font-size:11px;font-weight:600;color:var(--label3);transition:color .15s;
+  justify-content:center;
+}
+#chips-toggle:active{color:var(--label)}
+#chips-toggle-icon{font-size:10px;transition:transform .22s ease;display:inline-block}
+#chips-bar.collapsed #chips-toggle-icon{transform:rotate(-90deg)}
+.cchip{
+  padding:4px 12px;border-radius:var(--r20);font-size:12px;font-weight:600;
+  cursor:pointer;opacity:.45;border:1.5px solid transparent;transition:.15s;white-space:nowrap;
+  flex-shrink:0;
+}
+.cchip.on{opacity:1;border-color:currentColor}
+.cchip:active{opacity:.7}
+
+/* Chip Bearbeiten-Modus: × zum Ausblenden */
+.cchip-wrap{position:relative;display:inline-flex;flex-shrink:0}
+.cchip-x{
+  position:absolute;top:-5px;right:-5px;
+  width:17px;height:17px;background:var(--red);color:#fff;
+  border-radius:50%;font-size:12px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;line-height:1;border:1.5px solid var(--bg0);
+}
+
+#mbar{
+  flex-shrink:0;height:0;overflow:hidden;
+  font-size:13px;font-weight:500;display:flex;align-items:center;padding:0 14px;transition:height .2s;
+}
+#mbar.d{height:34px;background:rgba(10,132,255,.15);border-bottom:0.5px solid rgba(10,132,255,.3);color:var(--blue)}
+#mbar.g{height:34px;background:rgba(48,209,88,.12);border-bottom:0.5px solid rgba(48,209,88,.25);color:var(--green)}
+#mbar.w{height:34px;background:rgba(255,159,10,.12);border-bottom:0.5px solid rgba(255,159,10,.3);color:var(--orange)}
+/* ── Wort-Marker ─────────────────────────────────────────────── */
+.wm{display:inline;border-radius:3px;transition:background .1s}
+.wm.clk{cursor:pointer}
+.wm.clk:hover,.wm.clk:active{background:rgba(255,159,10,.18)}
+.wm.on{
+  background:rgba(255,159,10,.28);color:var(--orange);
+  border-radius:3px;padding:0 2px;margin:0 1px;
+  outline:1.5px solid rgba(255,159,10,.45);outline-offset:0px;
+}
+
+#script-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:24px 0 24px;
+  background:#fff;touch-action:pan-y;}
+#scontent{max-width:680px;width:100%;margin:0 auto;padding:0 16px}
+@media(max-width:520px){
+  #script-scroll{padding:16px 0}
+  #scontent{padding:0 10px}
+}
+
+/* chips-bar touch target groß genug */
+#chips-toggle{min-height:32px}
+
+/* ── WELCOME ────────────────────────────────────────────────── */
+#welcome{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:18px;min-height:50vh;text-align:center;padding:32px 24px;
+}
+.wico{font-size:56px;opacity:.15}
+#welcome h2{font-size:20px;font-weight:700;color:var(--label2);letter-spacing:-.2px}
+#welcome p{font-size:15px;color:var(--label3);max-width:280px;line-height:1.6}
+.bigbtn{
+  background:var(--blue);color:#fff;border:none;
+  padding:14px 32px;border-radius:var(--r12);font-size:16px;font-weight:600;
+  cursor:pointer;transition:.15s;letter-spacing:-.1px;min-height:50px;
+}
+.bigbtn:active{opacity:.8}
+.hint{font-size:12px;color:var(--label4);letter-spacing:.04em}
+
+/* ── SCREENPLAY ELEMENTS ────────────────────────────────────── */
+.ssec{margin-bottom:44px}
+
+/* Scene heading — sticky card auf weißem Hintergrund */
+.shd{
+  position:sticky;top:0;z-index:10;
+  background:#e8f0ff;border:0.5px solid #c0d4f8;
+  border-radius:var(--r10);padding:10px 14px;margin-bottom:14px;
+  display:flex;align-items:center;justify-content:space-between;
+  font-family:var(--font);font-size:11px;font-weight:700;letter-spacing:.08em;
+  color:#0055cc;text-transform:uppercase;
+}
+.shd-stats{display:flex;align-items:center;gap:8px;font-size:10px;color:rgba(10,132,255,.7)}
+.smbar{width:40px;height:2px;background:rgba(10,132,255,.2);border-radius:1px;overflow:hidden}
+.smfill{height:100%;border-radius:1px;transition:width .3s;background:var(--blue)}
+
+/* Notes — auf weißem Hintergrund */
+.ntog{
+  width:100%;text-align:left;background:none;border:1px dashed #ddd;
+  color:#aaa;padding:8px 12px;font-size:13px;cursor:pointer;
+  border-radius:var(--r8);transition:.15s;margin-bottom:10px;
+  font-family:var(--font);display:flex;align-items:center;gap:6px;min-height:38px;
+}
+.ntog:active{background:#f5f5f5}
+.nta{
+  width:100%;background:#f7f7f7;border:0.5px solid #e0e0e0;color:#1c1c1e;
+  padding:10px 14px;font-size:15px;font-family:var(--font);
+  resize:vertical;min-height:60px;border-radius:var(--r10);
+  outline:none;display:none;margin-bottom:12px;line-height:1.5;
+}
+.nta.open{display:block}
+.nta:focus{border-color:var(--blue)}
+
+/* Script lines — Helvetica auf weißem Hintergrund */
+.ln{font-family:var(--mono);line-height:1.75;font-size:14px;color:#1c1c1e}
+.ln-action{color:#555;margin:6px 0}
+.ln-transition{color:#999;text-align:right;font-size:12px;padding:4px 0;letter-spacing:.08em}
+.ln-character{
+  text-align:center;padding-top:14px;font-weight:700;
+  letter-spacing:.06em;text-transform:uppercase;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+}
+.ln-parenthetical{text-align:center;color:#777;font-style:italic;font-size:13px}
+.ln-dialogue{
+  cursor:pointer;border-radius:var(--r8);position:relative;
+  transition:background .1s;border-left:3px solid transparent;
+  padding:2px 10px 2px 14px;margin:1px 0;
+}
+@media(min-width:768px){
+  .ln-character{text-align:left;padding-left:185px;justify-content:flex-start}
+  .ln-parenthetical{text-align:left;padding-left:118px}
+  .ln-dialogue{padding-left:76px;padding-right:76px}
+}
+.ln-dialogue:active,.ln-dialogue:hover{background:rgba(0,0,0,.05)}
+.ln-dialogue.rec{text-decoration:line-through;opacity:.4}
+.ln-dialogue.rec::after{
+  content:'✓';position:absolute;right:10px;top:50%;transform:translateY(-50%);
+  color:var(--green);font-size:13px;opacity:1;font-weight:700;
+}
+.ln-dialogue.isoff{font-style:italic}
+.ln-dialogue.isnt{background:rgba(10,132,255,.1)}
+.ln-dialogue.isnt::before{
+  content:'🎙';position:absolute;left:4px;top:50%;transform:translateY(-50%);font-size:11px;
+}
+.ln-action.gclk,.ln-dialogue.gclk{cursor:crosshair}
+.ln-action.gclk:hover,.ln-dialogue.gclk:hover{background:rgba(48,209,88,.1)}
+.off-badge{
+  background:rgba(10,132,255,.2);color:var(--blue);border:1px solid rgba(10,132,255,.3);
+  border-radius:6px;font-size:10px;font-weight:700;padding:1px 6px;letter-spacing:.06em;
+}
+.ntlbl{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;cursor:pointer;opacity:.7}
+.ntlbl:active{opacity:1}
+.hl{background:rgba(255,159,10,.3);border-radius:3px}
+
+/* ── NURTON TAB ─────────────────────────────────────────────── */
+#nsubtabs{
+  flex-shrink:0;display:flex;padding:0 14px;gap:0;
+  background:var(--bg1);border-bottom:0.5px solid var(--sep);
+}
+.nstab{
+  background:none;border:none;border-bottom:2px solid transparent;
+  color:var(--label3);font-size:14px;font-weight:600;cursor:pointer;
+  padding:12px 18px;transition:.15s;
+}
+.nstab.on{color:var(--blue);border-bottom-color:var(--blue)}
+.nstab:active{opacity:.6}
+#nscroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y}
+
+/* Nurton stats bar */
+.ntstats{
+  display:flex;align-items:center;gap:8px;
+  padding:12px 16px;border-bottom:0.5px solid var(--sep);
+  flex-wrap:wrap;gap:6px;
+}
+.nts{padding:4px 12px;border-radius:var(--r20);font-size:13px;font-weight:600}
+.nts.o{background:rgba(255,69,58,.15);color:var(--red)}
+.nts.d{background:rgba(48,209,88,.15);color:var(--green)}
+.nts.t{background:var(--fill3);color:var(--label3)}
+.ntempty{
+  text-align:center;padding:48px 24px;color:var(--label3);
+  font-size:15px;line-height:2.2;
+}
+.ntempty small{font-size:13px;display:block;line-height:1.8}
+
+/* Nurton cards (mobile) */
+.nt-cards{padding:12px 16px;display:flex;flex-direction:column;gap:10px}
+.nt-card{
+  background:var(--bg2);border-radius:var(--r12);overflow:hidden;
+  box-shadow:var(--shadow);
+}
+.nt-card.done{opacity:.5}
+.nt-card-top{
+  display:flex;align-items:center;gap:8px;padding:12px 14px 0;
+}
+.nt-card-char{font-size:12px;font-weight:700;letter-spacing:.06em}
+.nt-card-scene{flex:1;font-size:11px;color:var(--label3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nt-badges{display:flex;gap:4px}
+.badge{border-radius:5px;font-size:10px;font-weight:700;padding:2px 6px}
+.badge.auto{background:rgba(10,132,255,.2);color:var(--blue)}
+.badge.man{background:rgba(255,159,10,.2);color:var(--orange)}
+.badge.off{background:rgba(48,209,88,.15);color:var(--green)}
+.nt-card-text{padding:8px 14px;font-size:14px;color:var(--label);line-height:1.5;font-family:var(--mono)}
+.nt-card-bottom{
+  display:flex;align-items:center;gap:8px;padding:8px 14px 12px;
+  border-top:0.5px solid var(--sep);
+}
+.stbtn{
+  background:none;border:1.5px solid var(--sep);border-radius:var(--r20);
+  font-size:13px;font-weight:600;padding:5px 14px;cursor:pointer;transition:.15s;
+  min-height:32px;font-family:var(--font);
+}
+.stbtn.offen{color:var(--label3)}
+.stbtn.offen:active{border-color:var(--red);color:var(--red)}
+.stbtn.erledigt{color:var(--green);border-color:var(--green);background:rgba(48,209,88,.1)}
+.nt-note{
+  flex:1;background:var(--fill3);border:none;border-radius:var(--r8);
+  color:var(--label);padding:6px 10px;font-size:14px;font-family:var(--font);outline:none;
+}
+.nt-del-btn{
+  background:none;border:none;color:var(--label4);font-size:18px;cursor:pointer;
+  padding:4px;min-width:32px;min-height:32px;display:flex;align-items:center;justify-content:center;
+  border-radius:var(--r8);transition:.15s;
+}
+.nt-del-btn:active{color:var(--red)}
+
+/* Desktop table for Nurtons (iPad/desktop) */
+.nttbl{display:none;width:100%;border-collapse:collapse;font-size:13px}
+@media(min-width:768px){
+  .nttbl{display:table}
+  .nt-cards{display:none}
+}
+.nttbl thead tr{border-bottom:1.5px solid var(--sep-o)}
+.nttbl th{text-align:left;padding:10px 14px;font-size:10px;font-weight:600;
+  letter-spacing:.1em;color:var(--label3);text-transform:uppercase}
+.nttbl tbody tr{border-bottom:0.5px solid var(--sep);transition:.1s}
+.nttbl tbody tr:hover{background:var(--fill3)}
+.nttbl tbody tr.done{opacity:.45}
+.nttbl td{padding:8px 14px;vertical-align:middle}
+.td-num{color:var(--label3);width:32px;text-align:center;font-size:12px}
+.td-scene{color:var(--label3);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+.td-char{font-weight:700;white-space:nowrap;max-width:100px}
+.td-text{max-width:260px;font-family:var(--mono);font-size:12px}
+.td-ref{color:var(--label3);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-style:italic;font-size:12px}
+.td-note{background:var(--fill3);border:none;border-radius:var(--r8);color:var(--label);
+  padding:4px 8px;font-size:12px;font-family:var(--font);outline:none;width:110px}
+.td-del{background:none;border:none;color:var(--label4);cursor:pointer;font-size:15px;padding:4px 6px}
+.td-del:hover{color:var(--red)}
+
+/* Nurton table pagination wrapper */
+#ntbl-wrap{padding:0 0 16px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+
+/* ── NURTON SZENENGRUPPEN ────────────────────────────────────── */
+.nt-grp-hd{
+  padding:10px 16px 8px;margin-top:14px;
+  font-size:11px;font-weight:700;letter-spacing:.09em;color:var(--blue);
+  text-transform:uppercase;
+  background:rgba(10,132,255,.09);
+  border-top:0.5px solid rgba(10,132,255,.25);
+  border-bottom:0.5px solid rgba(10,132,255,.18);
+  display:flex;align-items:center;gap:8px;
+}
+.nt-grp-hd:first-child{margin-top:0;border-top:none}
+.nt-grp-prog{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:10px}
+.nt-grp-prog-open{color:var(--red);font-weight:600}
+.nt-grp-prog-done{color:var(--green);font-weight:600}
+.nt-grp-bar{width:44px;height:3px;background:rgba(10,132,255,.2);border-radius:2px;overflow:hidden}
+.nt-grp-bar-fill{height:100%;background:var(--blue);border-radius:2px;transition:width .3s}
+
+/* Szenen-Trennzeile in Desktop-Tabelle */
+.nt-sep-row>td{
+  background:rgba(10,132,255,.09);color:var(--blue);
+  font-size:10px;font-weight:700;letter-spacing:.1em;
+  padding:9px 14px;text-transform:uppercase;
+  border-top:1px solid rgba(10,132,255,.25);
+}
+.nt-sep-stats{float:right;font-weight:400;color:rgba(10,132,255,.65);letter-spacing:.04em}
+
+/* ── BOTTOM TAB BAR (mobile) ────────────────────────────────── */
+#tabbar{
+  display:flex;flex-shrink:0;
+  height:var(--tb);padding-bottom:var(--sb);padding-left:var(--sl);padding-right:var(--sr);
+  background:rgba(28,28,30,.92);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);
+  border-top:0.5px solid var(--sep);
+}
+@media(min-width:768px){#tabbar{display:none}}
+.tabitem{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:3px;background:none;border:none;cursor:pointer;
+  padding:6px 4px 0;color:var(--label3);font-size:10px;font-weight:500;
+  transition:color .15s;position:relative;
+  min-height:44px; /* Apple HIG minimum */
+  -webkit-appearance:none;touch-action:manipulation;
+}
+.tabitem.on{color:var(--blue)}
+.tabitem-icon{font-size:22px;line-height:1}
+.tabitem-badge{
+  position:absolute;top:2px;right:calc(50% - 20px);
+  background:var(--red);color:#fff;border-radius:8px;font-size:10px;font-weight:700;
+  padding:0 5px;min-width:16px;text-align:center;
+  display:none;border:2px solid var(--bg1);
+}
+.tabitem-badge.on{display:block}
+
+/* ── MOBILE PROJECTS VIEW ────────────────────────────────────── */
+#proj-view{display:none;flex:1;flex-direction:column;overflow:hidden}
+#proj-view.on{display:flex}
+#proj-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px}
+.proj-card{
+  background:var(--bg2);border-radius:var(--r16);overflow:hidden;
+  margin-bottom:16px;box-shadow:var(--shadow);
+}
+.proj-card-hd{
+  display:flex;align-items:center;gap:10px;padding:14px 16px;
+  border-bottom:0.5px solid var(--sep);
+}
+.proj-card-hd h3{font-size:16px;font-weight:700;flex:1}
+.proj-hd-btns{display:flex;gap:4px}
+.proj-hd-btn{
+  background:var(--fill3);border:none;color:var(--label2);border-radius:var(--r8);
+  padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer;
+}
+.proj-hd-btn:active{opacity:.6}
+.proj-hd-btn.del{color:var(--red)}
+.script-row{
+  display:flex;align-items:center;gap:10px;padding:13px 16px;
+  cursor:pointer;border-bottom:0.5px solid var(--sep);transition:.12s;
+}
+.script-row:last-child{border-bottom:none}
+.script-row:active{background:var(--fill3)}
+.script-row.on{background:rgba(10,132,255,.1)}
+.script-row-info{flex:1;min-width:0}
+.script-row-name{font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.script-row.on .script-row-name{color:var(--blue)}
+.script-row-meta{font-size:12px;color:var(--label3);margin-top:1px}
+.script-row-chevron{color:var(--label4);font-size:14px;flex-shrink:0}
+.add-script-row{
+  display:flex;align-items:center;gap:8px;padding:13px 16px;
+  color:var(--blue);font-size:15px;font-weight:600;cursor:pointer;
+}
+.add-script-row:active{opacity:.6}
+.add-proj-card{
+  background:var(--fill3);border-radius:var(--r16);padding:14px 16px;
+  display:flex;align-items:center;gap:10px;cursor:pointer;
+  color:var(--blue);font-size:15px;font-weight:600;
+}
+.add-proj-card:active{opacity:.6}
+
+/* ── FAB — Floating Action Button (mobil, Modus-Umschalter) ── */
+#fab{
+  position:fixed;right:18px;
+  bottom:calc(var(--tb) + 20px + var(--sb));
+  z-index:200;display:flex;flex-direction:column-reverse;align-items:center;gap:10px;
+  /* pointer-events:none entfernt — blockierte Taps auf iOS */
+}
+@media(min-width:768px){#fab{display:none}}
+#fab-btn{
+  width:58px;height:58px;border-radius:50%;border:none;
+  background:rgba(60,60,67,.8);color:var(--label);font-size:26px;
+  box-shadow:0 4px 24px rgba(0,0,0,.55);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:background .2s,transform .15s;
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  -webkit-appearance:none;
+}
+#fab-btn:active{transform:scale(.9);opacity:.8}
+#fab-btn.d{background:var(--blue)}
+#fab-btn.g{background:var(--green)}
+#fab-btn.w{background:var(--orange)}
+#fab-label{
+  background:rgba(28,28,30,.95);color:var(--label);
+  font-size:12px;font-weight:600;padding:5px 12px;border-radius:var(--r20);
+  white-space:nowrap;opacity:0;transition:opacity .25s;
+  box-shadow:0 2px 10px rgba(0,0,0,.4);pointer-events:none;
+}
+#fab-label.on{opacity:1}
+
+/* ── ACTION SHEET (Long Press) ───────────────────────────────── */
+#as-overlay{
+  display:none;position:fixed;inset:0;z-index:700;
+  background:rgba(0,0,0,.5);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+  align-items:flex-end;justify-content:center;
+}
+#as-overlay.on{display:flex}
+#as-sheet{
+  width:100%;max-width:500px;
+  padding:0 10px calc(10px + var(--sb));
+  transform:translateY(120%);transition:transform .32s cubic-bezier(.32,0,.22,1);
+}
+#as-sheet.open{transform:translateY(0)}
+#as-card{
+  background:var(--bg2);border-radius:var(--r16);overflow:hidden;
+  margin-bottom:10px;box-shadow:var(--shadow-lg);
+}
+#as-title{
+  padding:13px 16px;font-size:13px;color:var(--label3);
+  border-bottom:0.5px solid var(--sep);
+  font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.as-item{
+  width:100%;background:none;border:none;border-bottom:0.5px solid var(--sep);
+  font-size:17px;font-weight:500;font-family:var(--font);
+  padding:17px 16px;text-align:center;cursor:pointer;display:block;
+  transition:background .1s;
+}
+.as-item:last-child{border-bottom:none}
+.as-item:active{background:var(--fill3)}
+#as-cancel{
+  width:100%;background:var(--bg2);border:none;border-radius:var(--r16);
+  color:var(--blue);font-size:17px;font-weight:700;font-family:var(--font);
+  padding:17px 16px;cursor:pointer;display:block;box-shadow:var(--shadow);
+}
+#as-cancel:active{background:var(--bg3)}
+
+/* ── BACKUP ──────────────────────────────────────────────────── */
+#backup-bar{
+  flex-shrink:0;display:flex;gap:8px;
+  padding:10px 10px calc(10px + var(--sb));
+  border-top:0.5px solid var(--sep);background:var(--bg2);
+}
+@media(min-width:768px){#backup-bar{padding-bottom:10px}}
+.bk-btn{
+  flex:1;background:var(--fill3);border:none;color:var(--label2);
+  border-radius:var(--r10);font-size:12px;font-weight:600;
+  padding:9px 8px;cursor:pointer;display:flex;align-items:center;
+  justify-content:center;gap:5px;transition:opacity .15s;font-family:var(--font);
+}
+.bk-btn:active{opacity:.6}
+.bk-btn.imp{color:var(--blue)}
+.proj-bk-card{
+  background:var(--bg2);border-radius:var(--r16);overflow:hidden;
+  margin-bottom:16px;box-shadow:var(--shadow);
+}
+.proj-bk-hd{
+  padding:12px 16px;font-size:14px;font-weight:700;
+  border-bottom:0.5px solid var(--sep);display:flex;align-items:center;gap:8px;
+}
+.proj-bk-info{padding:10px 16px;font-size:13px;color:var(--label3);line-height:1.7}
+.proj-bk-btns{display:flex;gap:10px;padding:0 16px 14px}
+
+/* ── TONBERICHT ─────────────────────────────────────────────── */
+#tb-toolbar{
+  flex-shrink:0;display:flex;align-items:center;gap:8px;
+  padding:8px 14px;background:var(--bg1);
+  border-bottom:0.5px solid var(--sep);
+}
+#tb-content{
+  flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding:14px;touch-action:pan-y;
+}
+.tb-section{margin-bottom:20px}
+.tb-sec-hd{
+  display:flex;align-items:center;justify-content:space-between;
+  font-size:11px;font-weight:600;letter-spacing:.07em;color:var(--label3);
+  text-transform:uppercase;padding:6px 0 8px;
+  border-bottom:0.5px solid var(--sep);margin-bottom:10px;
+}
+.tb-empty{font-size:13px;color:var(--label4);padding:8px 0;font-style:italic}
+/* Drehtag */
+.tb-dt-card{
+  background:var(--bg2);border-radius:var(--r12);padding:14px;
+  margin-bottom:10px;box-shadow:var(--shadow);
+}
+.tb-dt-hd{
+  display:flex;align-items:center;gap:8px;margin-bottom:10px;
+  padding-bottom:8px;border-bottom:0.5px solid var(--sep);
+}
+.tb-dt-num{font-size:14px;font-weight:700;flex:1;color:var(--label)}
+.tb-dt-body{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.tb-dt-row{display:flex;flex-direction:column;gap:4px}
+.tb-dt-row label{font-size:10px;font-weight:600;letter-spacing:.07em;color:var(--label3);text-transform:uppercase}
+/* Scene blocks */
+.tb-scene{
+  background:var(--bg2);border-radius:var(--r12);margin-bottom:14px;
+  overflow:hidden;box-shadow:var(--shadow);
+}
+.tb-scene-hd{
+  display:flex;align-items:center;gap:10px;padding:11px 14px;
+  border-bottom:0.5px solid var(--sep);background:var(--bg3);
+}
+.tb-scene-title{
+  flex:1;font-size:12px;font-weight:700;letter-spacing:.06em;
+  color:var(--blue);text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+/* Einstellungen */
+.tb-ei-list{padding:8px 10px 0}
+.tb-ei-card{
+  background:var(--bg1);border-radius:var(--r10);margin-bottom:8px;
+  overflow:hidden;border:0.5px solid var(--sep);
+}
+.tb-ei-hd{
+  display:flex;align-items:center;gap:10px;padding:9px 12px;
+  border-bottom:0.5px solid var(--sep);background:rgba(10,132,255,.06);
+}
+.tb-ei-letter{
+  background:var(--blue);color:#fff;border-radius:6px;
+  width:28px;height:28px;display:flex;align-items:center;justify-content:center;
+  font-size:14px;font-weight:800;flex-shrink:0;
+}
+.tb-char-chips{display:flex;flex-wrap:wrap;gap:4px;flex:1;min-width:0}
+.tb-char-chip{
+  border:1.5px solid currentColor;background:none;border-radius:var(--r20);
+  font-size:11px;font-weight:600;padding:3px 9px;cursor:pointer;
+  transition:.15s;font-family:var(--font);min-height:26px;
+}
+.tb-char-chip.off{color:var(--label4)!important;background:none!important;
+  border-color:var(--sep)!important;text-decoration:line-through}
+.tb-ei-ctrl{display:flex;gap:8px;padding:6px 10px 10px}
+/* Takes */
+.tb-take-card{
+  padding:10px 12px 8px;border-top:0.5px solid var(--sep);
+}
+.tb-take-card.best{background:rgba(255,159,10,.05)}
+.tb-take-hd{
+  display:flex;align-items:center;gap:7px;margin-bottom:8px;flex-wrap:wrap;
+}
+.tb-take-num{font-size:13px;font-weight:700;min-width:56px;color:var(--label)}
+.tb-stars{display:flex;gap:1px}
+.tb-star{
+  background:none;border:none;font-size:18px;cursor:pointer;
+  color:var(--fill1);transition:color .1s;padding:0 1px;line-height:1;
+}
+.tb-star.on{color:var(--orange)}
+.tb-star:hover{color:var(--orange);opacity:.7}
+.tb-best-btn{
+  background:none;border:1.5px solid var(--sep);border-radius:var(--r8);
+  font-size:11px;font-weight:600;padding:4px 10px;cursor:pointer;
+  color:var(--label3);transition:.15s;min-height:28px;font-family:var(--font);
+}
+.tb-best-btn.on{border-color:var(--orange);color:var(--orange);background:rgba(255,159,10,.1)}
+.tb-del-btn{
+  background:none;border:none;color:var(--label4);font-size:15px;cursor:pointer;
+  padding:4px 6px;min-width:28px;min-height:28px;margin-left:auto;
+  border-radius:var(--r8);transition:.15s;
+  display:flex;align-items:center;justify-content:center;
+}
+.tb-del-btn:active{color:var(--red)}
+/* Criteria */
+.tb-criteria-section{margin-bottom:10px}
+.tb-criteria-hd{
+  font-size:10px;font-weight:600;letter-spacing:.08em;color:var(--label3);
+  text-transform:uppercase;margin-bottom:7px;display:flex;align-items:center;gap:6px;
+}
+.tb-verst-row{display:flex;align-items:center;gap:5px;margin-bottom:8px;flex-wrap:wrap}
+.tb-crit-label{font-size:11px;color:var(--label2);min-width:95px;flex-shrink:0}
+.tb-verst-btn{
+  background:var(--fill3);border:1.5px solid transparent;border-radius:var(--r20);
+  font-size:11px;font-weight:600;padding:4px 11px;cursor:pointer;
+  color:var(--label3);transition:.15s;min-height:28px;font-family:var(--font);
+}
+.tb-verst-btn.on-gut{background:rgba(48,209,88,.15);color:var(--green);border-color:var(--green)}
+.tb-verst-btn.on-mittel{background:rgba(255,159,10,.15);color:var(--orange);border-color:var(--orange)}
+.tb-verst-btn.on-schlecht{background:rgba(255,69,58,.15);color:var(--red);border-color:var(--red)}
+.tb-bool-wrap{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px}
+.tb-crit-chip{
+  background:var(--fill3);border:1.5px solid transparent;border-radius:var(--r20);
+  font-size:11px;font-weight:600;padding:4px 11px;cursor:pointer;
+  color:var(--label3);transition:.15s;min-height:28px;font-family:var(--font);
+}
+.tb-crit-chip.on{background:rgba(255,69,58,.15);color:var(--red);border-color:var(--red)}
+.tb-crit-chip.on.noise{background:rgba(255,159,10,.15);color:var(--orange);border-color:var(--orange)}
+.tb-custom-noise-row{display:flex;gap:7px;margin-bottom:6px;align-items:center}
+.tb-kom-row{margin-top:4px;padding-bottom:4px}
+.tb-kom{width:100%;min-height:48px;resize:vertical}
+.tb-add-take-btn{
+  width:100%;background:rgba(10,132,255,.07);border:none;color:var(--blue);
+  border-radius:0 0 var(--r10) var(--r10);padding:9px;font-size:13px;font-weight:600;
+  cursor:pointer;transition:.15s;font-family:var(--font);
+}
+.tb-add-take-btn:active{background:rgba(10,132,255,.16)}
+/* Inputs */
+.tb-input{
+  background:var(--fill3);border:none;border-radius:var(--r8);
+  color:var(--label);padding:7px 10px;font-size:13px;font-family:var(--font);
+  outline:none;width:100%;transition:background .15s;
+}
+.tb-input:focus{background:var(--fill1)}
+.tb-input-sm{font-size:12px!important;padding:5px 8px!important}
+.tb-select{
+  background:var(--fill3);border:none;border-radius:var(--r8);
+  color:var(--label);padding:6px 10px;font-size:13px;font-family:var(--font);
+  outline:none;cursor:pointer;
+}
+.tb-select-sm{font-size:12px;padding:4px 8px}
+.tb-add-btn{
+  background:var(--blue);color:#fff;border:none;border-radius:var(--r8);
+  font-size:12px;font-weight:600;padding:6px 14px;cursor:pointer;
+  transition:opacity .15s;font-family:var(--font);min-height:32px;
+}
+.tb-add-btn:active{opacity:.8}
+.tb-pill-btn{
+  background:var(--fill3);border:none;color:var(--blue);border-radius:var(--r20);
+  font-size:12px;font-weight:600;padding:6px 14px;cursor:pointer;
+  transition:.15s;font-family:var(--font);min-height:32px;white-space:nowrap;
+}
+.tb-pill-btn:active{opacity:.7}
+.tb-pill-btn.destr{color:var(--red)}
+
+/* ── Tonbericht Mobile ──────────────────────────────────────── */
+@media(max-width:520px){
+  #tb-content{padding:10px}
+  #tb-toolbar{padding:6px 10px;flex-wrap:wrap;gap:6px}
+  #tb-toolbar>span{display:none} /* Info-Text ausblenden */
+  .tb-projekt-body,.tb-dt-body{grid-template-columns:1fr 1fr}
+  .tb-scene-hd{flex-wrap:wrap;gap:6px}
+  .tb-scene-title{font-size:11px}
+  .tb-ei-hd{flex-wrap:wrap;gap:7px}
+  .tb-take-hd{flex-wrap:wrap;row-gap:5px}
+  .tb-take-hd .tb-stars{order:2}
+  .tb-take-hd .tb-best-btn{order:3}
+  .tb-take-hd .tb-del-btn{order:4}
+  .tb-take-label-inp{max-width:100%!important;flex-basis:100%;order:5}
+  .tb-kanal-row{padding:6px 10px 7px}
+  .tb-dt-card,.tb-scene,.tb-ei-card{border-radius:var(--r10)}
+  .tb-verst-row{flex-wrap:wrap}
+  .tb-crit-label{min-width:unset;width:100%}
+}
+@media(max-width:380px){
+  .tb-take-num{font-size:12px;min-width:46px}
+  .tb-star{font-size:16px}
+  .tb-bool-wrap,.tb-ei-roles{gap:4px}
+}
+
+/* Projekt-Einstellungskarte */
+.tb-projekt-card{
+  background:var(--bg2);border-radius:var(--r12);padding:14px;
+  margin-bottom:16px;box-shadow:var(--shadow);
+  border:0.5px solid rgba(10,132,255,.3);
+}
+.tb-projekt-hd{
+  display:flex;align-items:center;gap:8px;margin-bottom:12px;
+  padding-bottom:8px;border-bottom:0.5px solid var(--sep);
+}
+.tb-projekt-hd-title{font-size:14px;font-weight:700;color:var(--label);flex:1}
+.tb-projekt-body{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;align-items:end}
+.tb-projekt-row{display:flex;flex-direction:column;gap:4px}
+.tb-projekt-row label{font-size:10px;font-weight:600;letter-spacing:.07em;color:var(--label3);text-transform:uppercase}
+.tb-seg-row{display:flex;gap:5px}
+.tb-seg-btn{
+  flex:1;background:var(--fill3);border:1.5px solid transparent;border-radius:var(--r8);
+  color:var(--label3);font-size:12px;font-weight:600;padding:7px 4px;cursor:pointer;
+  transition:.15s;font-family:var(--font);text-align:center;
+}
+.tb-seg-btn.on{background:rgba(10,132,255,.15);color:var(--blue);border-color:var(--blue)}
+/* Einstellungs-Codename */
+.tb-ei-codename{
+  font-size:10px;font-weight:600;letter-spacing:.06em;color:rgba(10,132,255,.65);
+  margin-top:2px;font-family:'Helvetica Neue',monospace;
+}
+/* Take-Name-Badge */
+.tb-take-name-row{
+  display:flex;align-items:center;gap:8px;
+  margin-bottom:6px;padding:5px 8px;
+  background:rgba(10,132,255,.08);border-radius:var(--r8);
+}
+.tb-take-name-badge{
+  font-family:'Helvetica Neue',monospace;font-size:14px;font-weight:700;
+  color:var(--blue);letter-spacing:.06em;flex:1;
+}
+.tb-copy-btn{
+  background:none;border:none;color:var(--label3);font-size:14px;cursor:pointer;
+  padding:2px 6px;border-radius:var(--r8);transition:.12s;min-height:26px;
+}
+.tb-copy-btn:active{color:var(--blue);background:rgba(10,132,255,.15)}
+
+/* Kanal-Chip-Zeile in Einstellung */
+.tb-kanal-row{
+  display:flex;align-items:center;flex-wrap:wrap;gap:5px;
+  padding:7px 12px 8px;border-top:0.5px solid var(--sep);
+  background:rgba(0,0,0,.1);
+}
+.tb-kanal-row-lbl{
+  font-size:10px;font-weight:600;letter-spacing:.07em;color:var(--label3);
+  text-transform:uppercase;white-space:nowrap;flex-shrink:0;
+}
+.tb-kanal-chip{
+  border:1.5px solid var(--sep);background:var(--fill3);border-radius:var(--r20);
+  font-size:11px;font-weight:600;padding:3px 10px;cursor:pointer;
+  color:var(--label3);transition:.15s;font-family:var(--font);min-height:26px;
+}
+.tb-kanal-chip.on{background:rgba(64,203,224,.15);color:var(--teal);border-color:var(--teal)}
+.tb-kanal-chip.char-on{border-color:currentColor}
+
+/* Take-Label (umbenennbar) */
+.tb-take-label{
+  font-size:11px;color:var(--label3);font-style:italic;
+  flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.tb-take-label-inp{
+  flex:1;min-width:80px;max-width:220px!important;
+  font-size:12px!important;padding:3px 7px!important;
+  font-style:italic;
+}
+
+/* Take-Steuerung: Reihenfolge + Verschieben */
+.tb-take-ctrl-row{
+  display:flex;align-items:center;gap:6px;
+  margin-bottom:8px;flex-wrap:wrap;
+}
+.tb-sort-btn{
+  background:var(--fill3);border:none;border-radius:var(--r8);
+  color:var(--label3);font-size:13px;cursor:pointer;
+  width:28px;height:28px;display:flex;align-items:center;justify-content:center;
+  transition:.12s;flex-shrink:0;
+}
+.tb-sort-btn:active{background:var(--fill1);color:var(--label)}
+.tb-sort-btn:disabled{opacity:.25;cursor:default}
+.tb-move-lbl{font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--label3);text-transform:uppercase;white-space:nowrap}
+.tb-move-sel{font-size:12px;padding:4px 8px;max-width:160px}
+
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div id="loading">
+  <div class="spin"></div>
+  <p id="load-msg">Lade Drehbuch …</p>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<!-- MODAL: COLOR PICKER -->
+<div id="movl" onclick="if(event.target===this)closeMod()">
+  <div id="modal">
+    <h3>🎨 Charakter-Farben</h3>
+    <div id="mchars"></div>
+    <div style="margin-top:18px;display:flex;gap:10px">
+      <button class="bigbtn" style="flex:1;padding:12px" onclick="closeMod()">Fertig</button>
+    </div>
+  </div>
+</div>
+
+<!-- SIDEBAR BACKDROP (mobile) -->
+<div id="sidebar-backdrop" onclick="closeSidebar()"></div>
+
+<!-- APP -->
+<div id="app">
+
+  <!-- NAVBAR -->
+  <div id="navbar">
+    <div id="nb-left">
+      <button class="nb-btn icon" id="sidebar-toggle" onclick="toggleSidebar()">☰</button>
+    </div>
+    <div id="nb-title">CineScript</div>
+    <div id="nb-right">
+      <span id="nb-prog">–</span>
+      <div id="gbar-track"><div id="gfill"></div></div>
+      <button class="nb-btn icon" onclick="openMod()" title="Farben">🎨</button>
+      <button class="nb-btn icon destructive" onclick="doReset()" title="Reset">↺</button>
+    </div>
+  </div>
+
+  <!-- BODY -->
+  <div id="body">
+
+    <!-- SIDEBAR -->
+    <div id="sidebar">
+      <div class="sidebar-hd">Projekte</div>
+      <div id="ptree-wrap"><div id="ptree"></div></div>
+      <div class="sidebar-hd" style="border-top:0.5px solid var(--sep);padding-top:12px">Szenen</div>
+      <div id="snav-wrap"><div id="snav"></div></div>
+      <!-- Backup-Leiste am Fuß der Sidebar -->
+      <div id="backup-bar">
+        <button class="bk-btn" onclick="exportBackup()">💾 Sichern</button>
+        <button class="bk-btn imp" onclick="g('bk-in').click()">📂 Laden</button>
+      </div>
+    </div>
+
+    <!-- MAIN -->
+    <div id="main">
+
+      <!-- Segmented control + actions (iPad/desktop) -->
+      <div id="seg-wrap">
+      <div id="seg-ctrl" style="max-width:380px">
+          <button class="seg-btn on" onclick="setTab('s')">Drehbuch</button>
+          <button class="seg-btn" onclick="setTab('n')">Nurtöne <span id="seg-nt-cnt"></span></button>
+          <button class="seg-btn" onclick="setTab('t')">🎚 Tonbericht</button>
+        </div>
+        <div id="seg-right">
+          <button class="icon-btn" onclick="expStatus()" title="Status exportieren">⬇</button>
+        </div>
+      </div>
+
+      <!-- MOBILE PROJECTS VIEW -->
+      <div id="proj-view">
+        <div id="proj-scroll"></div>
+      </div>
+
+      <!-- SCRIPT TAB -->
+      <div id="tab-s" class="tab-pane on">
+        <div id="mode-toolbar">
+          <button id="mbd" class="mode-pill" onclick="setMode('d')" title="[1]"><span class="pill-full">🎙 Dialog</span><span class="pill-short">🎙</span></button>
+          <button id="mbg" class="mode-pill" onclick="setMode('g')" title="[2]"><span class="pill-full">🔊 Geräusch</span><span class="pill-short">🔊</span></button>
+          <button id="mbw" class="mode-pill" onclick="setMode('w')" title="[3]"><span class="pill-full">✏ Wort-Marker</span><span class="pill-short">✏</span></button>
+          <div id="srch-wrap">
+            <input id="srch" type="search" placeholder="Suchen …" autocomplete="off" oninput="doSearch(this.value)">
+          </div>
+        </div>
+        <div id="chips-bar">
+          <button id="chips-toggle" onclick="toggleChips()">
+            <span id="chips-toggle-icon">▾</span>
+            <span id="chips-toggle-label">Rollen</span>
+          </button>
+        </div>
+        <div id="cwrap"></div>
+        <div id="mbar"></div>
+        <div id="script-scroll">
+          <div id="scontent">
+            <div id="welcome">
+              <div class="wico">🎬</div>
+              <h2>CineScript</h2>
+              <p>Erstelle ein Projekt und lade ein PDF-Drehbuch.</p>
+              <button class="bigbtn" onclick="newProj()">＋ Projekt erstellen</button>
+              <p class="hint">OFFLINE · LOKAL · KEIN SERVER</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- NURTON TAB -->
+      <div id="tab-n" class="tab-pane">
+        <div id="nsubtabs">
+          <button id="nst-d" class="nstab on" onclick="setNTab('d')">🎙 Dialog</button>
+          <button id="nst-g" class="nstab" onclick="setNTab('g')">🔊 Geräusche</button>
+          <button class="nstab" style="margin-left:auto" onclick="expNurtons(S.ntab==='d'?'dialog':'gerausch')">⬇ CSV</button>
+        </div>
+        <div id="nscroll">
+          <div id="ncontent"></div>
+        </div>
+      </div>
+
+      <!-- TONBERICHT TAB -->
+      <div id="tab-t" class="tab-pane">
+        <div id="tb-toolbar">
+          <button class="nb-btn" onclick="tbPrint()" style="gap:5px">🖨 Drucken / PDF</button>
+          <span style="font-size:12px;color:var(--label3);margin-left:4px">Tonbericht für alle Szenen</span>
+        </div>
+        <div id="tb-content"></div>
+      </div>
+
+    </div><!-- /main -->
+  </div><!-- /body -->
+
+  <!-- BOTTOM TAB BAR (mobile) -->
+  <div id="tabbar">
+    <button class="tabitem" data-tab="p" onclick="setMTab('p')">
+      <div class="tabitem-icon">📁</div>
+      <span>Projekte</span>
+    </button>
+    <button class="tabitem on" data-tab="s" onclick="setMTab('s')">
+      <div class="tabitem-icon">🎬</div>
+      <span>Skript</span>
+    </button>
+    <button class="tabitem" data-tab="n" onclick="setMTab('n')">
+      <div class="tabitem-icon">🎙</div>
+      <span>Nurtöne</span>
+      <div class="tabitem-badge" id="nt-tab-badge"></div>
+    </button>
+    <button class="tabitem" data-tab="t" onclick="setMTab('t')">
+      <div class="tabitem-icon">🎚</div>
+      <span>Tonbericht</span>
+    </button>
+  </div>
+
+</div><!-- /app -->
+
+<!-- FAB: Modus-Umschalter (nur mobil) -->
+<div id="fab">
+  <div id="fab-label"></div>
+  <button id="fab-btn" onclick="cycleFAB()" title="Modus wechseln">✱</button>
+</div>
+
+<!-- Action Sheet: erscheint beim Long Press auf Dialogzeile -->
+<div id="as-overlay" onclick="hideAS()">
+  <div id="as-sheet">
+    <div id="as-card">
+      <div id="as-title"></div>
+      <div id="as-items"></div>
+    </div>
+    <button id="as-cancel" onclick="hideAS()">Abbrechen</button>
+  </div>
+</div>
+
+<input type="file" id="fin"  accept=".pdf"  style="display:none" onchange="handleFile(event)">
+<input type="file" id="bk-in" accept=".json" style="display:none" onchange="importBackup(event)">
+
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   iOS VIEWPORT FIX — läuft als erstes, vor allem anderen
+   ---------------------------------------------------------------
+   Problem: Safari auf iPhone zieht die Höhe seines eigenen
+   Toolbars (URL-Bar + Bottom-Bar) NICHT von 100vh ab. Dadurch
+   verschwindet der Tab-Bar unter dem Safari-Toolbar und die App
+   ist nicht bedienbar.
+   Fix: --dvh wird auf window.innerHeight gesetzt = tatsächlich
+   sichtbare Höhe. #app nutzt var(--dvh) statt 100vh.
+═══════════════════════════════════════════════════════════════ */
+(function iosViewportFix(){
+  function set(){
+    document.documentElement.style.setProperty('--dvh', window.innerHeight + 'px');
+  }
+  set();
+  window.addEventListener('resize', set, {passive:true});
+  /* Nach Orientierungswechsel kurz warten bis Safari fertig ist */
+  window.addEventListener('orientationchange', function(){setTimeout(set, 300);}, {passive:true});
+})();
+
+/* ═══════════════════════════════════════════════════════════════
+   PDF.js — LAZY LOADING
+   ---------------------------------------------------------------
+   PDF.js wird nicht mehr beim App-Start geladen (das blockierte
+   Safari bei fehlendem Internet). Stattdessen wird es erst beim
+   ersten PDF-Import dynamisch nachgeladen. Die App öffnet dadurch
+   sofort — komplett ohne Internetverbindung.
+   Beim ersten PDF-Import wird einmalig Internet benötigt.
+   Danach cached Safari die Bibliothek automatisch.
+═══════════════════════════════════════════════════════════════ */
+const PDFJS_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+const WORKER_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+let _pdfReady = false;
+
+function setupPdfWorker() {
+  try {
+    const b = new Blob([`importScripts('${WORKER_CDN}');`], {type:'text/javascript'});
+    pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(b);
+  } catch(e) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_CDN;
+  }
+}
+
+function loadPdfJs() {
+  return new Promise(resolve => {
+    if (_pdfReady && typeof pdfjsLib !== 'undefined') { resolve(true); return; }
+    if (typeof pdfjsLib !== 'undefined') { setupPdfWorker(); _pdfReady=true; resolve(true); return; }
+    const s = document.createElement('script');
+    s.src = PDFJS_CDN;
+    s.onload  = () => { setupPdfWorker(); _pdfReady=true; resolve(true); };
+    s.onerror = () => resolve(false);
+    document.head.appendChild(s);
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   STATE
+═══════════════════════════════════════════════════════════════ */
+const COLS=['#ff6b6b','#4dabf7','#69db7c','#ffd43b','#cc5de8',
+            '#f783ac','#38d9a9','#a9e34b','#ff922b','#74c0fc',
+            '#da77f2','#63e6be','#ffe066','#748ffc'];
+const KEY='cs_v4';
+let _nid=0;
+const uid=()=>'nt_'+Date.now()+'_'+(_nid++);
+
+const S={
+  projects:{},pid:null,sid:null,
+  tab:'s',ntab:'d',mode:null,mtab:'s',
+  ui:{fc:null,q:'',si:0,chipsEdit:false,chipsCollapsed:false}
+};
+const isMobile=()=>window.innerWidth<768;
+const ap=()=>S.projects[S.pid]||null;
+const as=()=>{const p=ap();return p?(p.scripts[S.sid]||null):null;};
+
+function save(){
+  try{localStorage.setItem(KEY,JSON.stringify({projects:S.projects,pid:S.pid,sid:S.sid}));}
+  catch(e){}
+}
+function load(){
+  try{
+    const d=JSON.parse(localStorage.getItem(KEY)||'{}');
+    if(d.projects)S.projects=d.projects;
+    if(d.pid)S.pid=d.pid;
+    if(d.sid)S.sid=d.sid;
+  }catch(e){}
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PDF LOADING
+═══════════════════════════════════════════════════════════════ */
+async function loadPDF(file,pid){
+  setMsg('Öffne PDF …');
+  const buf=await file.arrayBuffer();
+  setMsg('Initialisiere …');
+  const pdf=await pdfjsLib.getDocument({data:buf,useWorkerFetch:false,isEvalSupported:false}).promise;
+  setMsg(`Extrahiere Text (${pdf.numPages} Seiten) …`);
+  const rows=await extractRows(pdf);
+  setMsg(`Parse Drehbuch …`);
+  const sid='sc_'+Date.now();
+  const sc={id:sid,name:file.name.replace(/\.pdf$/i,''),
+    scenes:[],characters:{},recorded:{},notes:{},nurtons:[],wordMarkers:{}};
+
+  /* Projektweite Farb-Palette: gleiche Rolle = gleiche Farbe in allen Skripten */
+  const projPalette={};
+  const proj=S.projects[pid];
+  if(proj) Object.values(proj.scripts).forEach(existing=>{
+    Object.entries(existing.characters).forEach(([name,ch])=>{
+      if(!projPalette[name])projPalette[name]=ch.color;
+    });
+  });
+
+  const stats=parseScript(rows,sc,projPalette);
+  autoNurtons(sc);
+  tbInit(sc);
+  S.projects[pid].scripts[sid]=sc;
+  S.sid=sid;
+  return stats;
+}
+
+async function extractRows(pdf){
+  const rows=[];
+  for(let p=1;p<=pdf.numPages;p++){
+    const page=await pdf.getPage(p);
+    const vp=page.getViewport({scale:1});
+    const tc=await page.getTextContent({disableCombineTextItems:false,includeMarkedContent:false});
+    const byY=new Map();
+    for(const item of tc.items){
+      if(!item.str||!item.str.trim())continue;
+      const rawY=vp.height-item.transform[5];
+      const x=item.transform[4];
+      const b=Math.round(rawY/3)*3;
+      if(!byY.has(b))byY.set(b,[]);
+      byY.get(b).push({str:item.str,x});
+    }
+    [...byY.entries()].sort(([a],[b])=>a-b).forEach(([,items])=>{
+      items.sort((a,b)=>a.x-b.x);
+      const text=items.map(i=>i.str).join('').trim();
+      if(text)rows.push({text,x:items[0].x,pw:vp.width});
+    });
+  }
+  return rows;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PARSER
+═══════════════════════════════════════════════════════════════ */
+/* ── Charakternamen normalisieren ─────────────────────────────
+   Fasst Doppelnamen zusammen die sich nur durch Sonderzeichen
+   oder Zusätze wie CONT'D unterscheiden:
+   "ANNA (CONT'D)" → "ANNA",  "DR. SMITH." → "DR. SMITH"       */
+function normChar(raw){
+  return raw
+    .replace(/\s*\(CONT'?D\.?\)\s*$/i,'')  // (CONT'D)
+    .replace(/\bCONT'?D\.?\s*$/i,'')        // CONT'D ohne Klammern
+    .replace(/\s*\(.*?\)\s*$/g,'')          // alle anderen Klammern am Ende
+    .replace(/[.,:;!?]+$/,'')               // Satzzeichen am Ende
+    .replace(/\s+/g,' ')
+    .trim();
+}
+
+/* FIX: \b entfernt — Punkt + Leerzeichen = keine Word-Boundary */
+const RE_SCENE=/^(\d+[.):\s]*)?(INT\.|EXT\.|I\/E\.|INT\/EXT\.|INNEN\.?|AUßEN\.?|AUSSEN\.?|INNEN\/AUßEN|INNEN\/AUSSEN)/i;
+const RE_TRANS=/^(SCHNITT\s*(ZU)?[:.]?|BLENDE\s*(AUF|AB)?[:.]?|CUT\s+TO\s*:|FADE\s*(IN|OUT|TO)\s*[:.]?|DISSOLVE\s+TO\s*:)/i;
+const RE_OFF=/\((V\.?\s*O\.?|O\.?\s*S\.?|OFF|TELEFON|AB)\s*\)/i;
+
+/* projPalette: { "ANNA":"#e05252", ... } — vorhandene Farben aus dem Projekt */
+function parseScript(rows,sc,projPalette={}){
+  if(!rows.length)return{scenes:0,dialogues:0,mode:'empty'};
+  const xs=rows.filter(r=>r.x>4).map(r=>r.x);
+  const lm=pctile(xs,8),rm=pctile(xs,92);
+  const span=Math.max(rm-lm,50);
+  const rx=x=>Math.max(0,Math.min(1,(x-lm)/span));
+  const indented=rows.filter(r=>rx(r.x)>0.30).length;
+  const hasCols=(indented/rows.length)>0.06;
+  const stats=runParser(rows,sc,rx,hasCols,true,projPalette);
+  const dlg=sc.scenes.reduce((n,s)=>n+s.lines.filter(l=>l.type==='dialogue').length,0);
+  if(sc.scenes.length<2||dlg<3){
+    sc.scenes=[];sc.characters={};
+    return runParser(rows,sc,rx,hasCols,false,projPalette);
+  }
+  return stats;
+}
+
+function runParser(rows,sc,rx,hasColumns,strict,projPalette={}){
+  let ci=0,sid=0,lid=0;
+  let cur=null,lchar=null,loff=false;
+  const thr=(hasColumns&&strict)?0.28:0.08;
+
+  const addScene=t=>{
+    /* Szenennummer beibehalten, nur die doppelte Wiederholung am Ende entfernen.
+       "1INT. MIAS REEL - NACHT1" → "1 INT. MIAS REEL - NACHT"
+       "1    INT. BÜRO - TAG    1" → "1 INT. BÜRO - TAG"
+       "INT. PARK - NACHT"         → "INT. PARK - NACHT"  (keine Änderung) */
+    const title=t
+      .replace(/\s*\d+\s*$/,'')       // doppelte Szenennummer am Ende entfernen
+      .replace(/^(\d+)[.):\s]+/,'$1 ') // "1." / "1   " → "1 " (normalisieren)
+      .trim()||t.trim();
+    cur={id:sid++,title,lines:[]};
+    sc.scenes.push(cur);
+    lchar=null;loff=false;
+  };
+  const addLine=(type,text,char=null,isOff=false)=>{
+    if(!cur)addScene('DREHBUCH');
+    cur.lines.push({id:lid++,type,text,character:char,isOff});
+  };
+  /* Projektfarbe nutzen wenn Rolle bereits in anderem Skript vorhanden */
+  const ensChar=name=>{
+    if(!sc.characters[name])
+      sc.characters[name]={color:projPalette[name]||COLS[ci++%COLS.length]};
+  };
+
+  for(const row of rows){
+    const t=row.text.trim();if(!t)continue;
+    const xr=rx(row.x);
+    const up=t.toUpperCase();
+    const isCaps=t===up&&/[A-ZÄÖÜ]/.test(t);
+    if(RE_SCENE.test(t)){addScene(t);continue;}
+    if(RE_TRANS.test(t)&&t.length<40){addLine('transition',t);lchar=null;loff=false;continue;}
+    if(isCaps&&t.length<55&&t.length>1&&xr>=thr&&!t.startsWith('(')&&!/^\d/.test(t)){
+      const off=RE_OFF.test(t);
+      /* normChar: entfernt CONT'D, Sonderzeichen, fasst Doppelnamen zusammen */
+      const name=normChar(t);
+      const blacklisted=/^[\d\s\-–—_.,:;!?]+$/.test(name)||/^(ENDE|THE END|FORTSETZUNG|CONTINUED|MEHR|MORE|\.\.\.)$/i.test(name);
+      if(name.length>1&&name.length<50&&!blacklisted){
+        ensChar(name);lchar=name;loff=off;
+        addLine('character',t,name,off);continue;
+      }
+    }
+    if(/^\(.*\)\s*$/.test(t)&&lchar){addLine('parenthetical',t,lchar);continue;}
+    if(lchar){
+      const ok=strict?(xr>0.08&&xr<0.92):true;
+      if(ok){addLine('dialogue',t,lchar,loff);continue;}
+    }
+    lchar=null;loff=false;addLine('action',t);
+  }
+  sc.scenes=sc.scenes.filter(s=>s.lines.length>0);
+  const dlg=sc.scenes.reduce((n,s)=>n+s.lines.filter(l=>l.type==='dialogue').length,0);
+  return{scenes:sc.scenes.length,dialogues:dlg,mode:strict?'strict':'loose'};
+}
+
+function autoNurtons(sc){
+  sc.scenes.forEach(scene=>scene.lines.forEach(line=>{
+    if(line.type==='dialogue'&&line.isOff){
+      sc.nurtons.push({
+        id:uid(),type:'dialog',
+        sceneId:scene.id,sceneTitle:scene.title,
+        character:line.character,text:line.text,refText:'',
+        lineId:line.id,isOff:true,auto:true,status:'offen',note:''
+      });
+    }
+  }));
+}
+
+function pctile(arr,p){
+  if(!arr.length)return 0;
+  const s=[...arr].sort((a,b)=>a-b);
+  return s[Math.floor(s.length*p/100)]||0;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PROJECT MANAGEMENT
+═══════════════════════════════════════════════════════════════ */
+function newProj(){
+  const n=prompt('Projektname:','Neue Serie');if(!n?.trim())return;
+  const pid='pr_'+Date.now();
+  S.projects[pid]={id:pid,name:n.trim(),created:Date.now(),scripts:{}};
+  S.pid=pid;S.sid=null;save();renderAll();
+  if(isMobile())setMTab('p');
+}
+function delProj(pid){
+  if(!confirm(`„${S.projects[pid]?.name}" löschen?`))return;
+  delete S.projects[pid];
+  if(S.pid===pid){const r=Object.keys(S.projects);S.pid=r.length?r[0]:null;S.sid=null;}
+  save();renderAll();
+}
+function renProj(pid){
+  const p=S.projects[pid];if(!p)return;
+  const n=prompt('Neuer Name:',p.name);if(!n?.trim())return;
+  p.name=n.trim();save();renderAll();
+}
+function delScript(pid,sid){
+  const sc=S.projects[pid]?.scripts[sid];if(!sc)return;
+  if(!confirm(`„${sc.name}" löschen?`))return;
+  delete S.projects[pid].scripts[sid];
+  if(S.sid===sid)S.sid=null;
+  save();renderAll();
+}
+function renScript(pid,sid){
+  const sc=S.projects[pid]?.scripts[sid];if(!sc)return;
+  const n=prompt('Skript-Name:',sc.name);if(!n?.trim())return;
+  sc.name=n.trim();save();renderAll();
+}
+function selScript(pid,sid){
+  S.pid=pid;S.sid=sid;S.ui.fc=null;S.ui.q='';S.ui.si=0;S.ui.chipsEdit=false;S.ui.chipsCollapsed=false;
+  g('srch').value='';resetModeUI();S.mode=null;
+  save();renderAll();
+  if(isMobile())setMTab('s');
+}
+let pendPid=null;
+function uploadTo(pid){pendPid=pid;g('fin').click();}
+async function handleFile(e){
+  const file=e.target.files[0];if(!file)return;
+  const pid=pendPid||S.pid;
+  if(!pid){alert('Bitte zuerst ein Projekt auswählen.');return;}
+  loading(true);
+  setMsg('Lade PDF.js …');
+  /* PDF.js erst jetzt laden — nicht beim App-Start */
+  const pdfOk = await loadPdfJs();
+  if(!pdfOk){
+    loading(false);
+    showToast('PDF-Import benötigt einmalig eine Internetverbindung.\nBitte kurz WLAN aktivieren, dann nochmal versuchen.','err');
+    return;
+  }
+  try{
+    const stats=await loadPDF(file,pid);
+    save();renderAll();
+    const msg=stats.scenes===0
+      ?'⚠ Kein Text gefunden. Gescannte PDF?'
+      :`✓ ${stats.scenes} Szene${stats.scenes!==1?'n':''} · ${stats.dialogues} Dialogzeilen`
+       +(stats.mode==='loose'?'\n⚠ Vereinfachter Erkennungsmodus':'');
+    showToast(msg,stats.scenes===0?'err':stats.mode==='loose'?'warn':'ok');
+    if(isMobile())setMTab('s');
+    wake();
+  }catch(err){
+    console.error(err);
+    showToast('Fehler: '+(err.message||err),'err');
+  }
+  loading(false);e.target.value='';
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   NURTON OPERATIONS
+═══════════════════════════════════════════════════════════════ */
+function addNtDialog(scene,line){
+  const sc=as();if(!sc)return;
+  const ex=sc.nurtons.find(n=>n.lineId===line.id);
+  if(ex){delNurton(ex.id);return;}
+  sc.nurtons.push({id:uid(),type:'dialog',sceneId:scene.id,sceneTitle:scene.title,
+    character:line.character,text:line.text,refText:'',lineId:line.id,
+    isOff:line.isOff||false,auto:false,status:'offen',note:''});
+  save();renderScript();renderNtTable();renderBadge();
+}
+function addNtGerausch(scene,line){
+  const sc=as();if(!sc)return;
+  const desc=prompt('Geräusch beschreiben:','');if(!desc?.trim())return;
+  sc.nurtons.push({id:uid(),type:'gerausch',sceneId:scene.id,sceneTitle:scene.title,
+    character:null,text:desc.trim(),refText:line.text,lineId:null,
+    isOff:false,auto:false,status:'offen',note:''});
+  save();renderNtTable();renderBadge();
+}
+function delNurton(nid){
+  const sc=as();if(!sc)return;
+  sc.nurtons=sc.nurtons.filter(n=>n.id!==nid);
+  save();renderScript();renderNtTable();renderBadge();
+}
+function togNtStatus(nid){
+  const sc=as();if(!sc)return;
+  const n=sc.nurtons.find(n=>n.id===nid);if(!n)return;
+  n.status=n.status==='offen'?'erledigt':'offen';
+  save();renderNtTable();renderBadge();
+}
+function updNtNote(nid,v){
+  const sc=as();if(!sc)return;
+  const n=sc.nurtons.find(n=>n.id===nid);if(n){n.note=v;save();}
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   RENDER
+═══════════════════════════════════════════════════════════════ */
+function renderAll(){
+  renderHeader();renderTree();renderSceneNav();renderChips();
+  renderScript();
+  if(S.tab==='n')renderNtTable();
+  if(S.tab==='t')renderTonbericht();
+  if(isMobile()&&S.mtab==='p')renderProjMobile();
+  renderBadge();
+}
+
+function renderHeader(){
+  const sc=as(),p=ap();
+  const title=sc?sc.name:(p?p.name:'CineScript');
+  g('nb-title').textContent=title;
+  if(sc){
+    let tot=0,rec=0;
+    sc.scenes.forEach(s=>s.lines.forEach(l=>{if(l.type==='dialogue'){tot++;if(sc.recorded[l.id])rec++;}}));
+    const pct=tot?Math.round(rec/tot*100):0;
+    g('nb-prog').textContent=pct+'%';
+    g('gfill').style.width=pct+'%';
+  }else{g('nb-prog').textContent='–';g('gfill').style.width='0%';}
+}
+
+/* ── PROJECT TREE (sidebar) */
+function renderTree(){
+  const tree=g('ptree');tree.innerHTML='';
+  Object.values(S.projects).sort((a,b)=>b.created-a.created).forEach(proj=>{
+    const sec=mk('div');
+    // Project header
+    const ph=mk('div','prow'+(S.pid===proj.id?' active':''));
+    const icon=mk('span','prow-icon');icon.textContent='📂';
+    const nm=mk('span','prow-name');nm.textContent=proj.name;nm.title=proj.name;
+    nm.ondblclick=e=>{e.stopPropagation();renProj(proj.id);};
+    const acts=mk('div','prow-acts');
+    const ab=mk('button');ab.textContent='＋';ab.title='PDF hinzufügen';
+    ab.onclick=e=>{e.stopPropagation();uploadTo(proj.id);};
+    const db=mk('button','d');db.textContent='✕';db.title='Löschen';
+    db.onclick=e=>{e.stopPropagation();delProj(proj.id);};
+    acts.append(ab,db);ph.append(icon,nm,acts);
+    ph.onclick=()=>{S.pid=proj.id;renderTree();};
+    // Scripts
+    const sl=mk('div');
+    Object.values(proj.scripts).sort((a,b)=>a.name.localeCompare(b.name)).forEach(sc=>{
+      const sr=mk('div','srow'+(S.sid===sc.id?' on':''));
+      sr.dataset.pid=proj.id;sr.dataset.sid=sc.id;
+      const si=mk('span','srow-icon');si.textContent='📄';
+      const sn=mk('span','srow-name');sn.textContent=sc.name;sn.title=sc.name;
+      const on=(sc.nurtons||[]).filter(n=>n.status==='offen').length;
+      const sd=mk('span','srow-del');sd.textContent='✕';
+      sd.onclick=e=>{e.stopPropagation();delScript(proj.id,sc.id);};
+      sr.append(si,sn);
+      if(on){const nb=mk('span','nt-badge');nb.textContent=on;sr.appendChild(nb);}
+      sr.appendChild(sd);
+      sr.ondblclick=e=>{e.stopPropagation();renScript(proj.id,sc.id);};
+      sr.onclick=()=>selScript(proj.id,sc.id);
+      sl.appendChild(sr);
+    });
+    const asc=mk('div','add-sc-btn');asc.textContent='＋ PDF hinzufügen';
+    asc.onclick=()=>uploadTo(proj.id);
+    sl.appendChild(asc);
+    sec.append(ph,sl);tree.appendChild(sec);
+  });
+  const ap2=mk('div','add-proj-btn');ap2.innerHTML='＋ Neues Projekt';
+  ap2.onclick=newProj;tree.appendChild(ap2);
+}
+
+/* ── SCENE NAV (sidebar) */
+function renderSceneNav(){
+  const nav=g('snav');nav.innerHTML='';
+  const sc=as();if(!sc)return;
+  sc.scenes.forEach((scene,idx)=>{
+    const d=scene.lines.filter(l=>l.type==='dialogue');
+    const r=d.filter(l=>sc.recorded[l.id]).length;
+    const p=d.length?r/d.length:0;
+    const col=p>=1?'#30d158':p>.5?'#ff9f0a':'#ff453a';
+    const item=mk('div','scn'+(S.ui.si===idx?' on':''));
+    item.innerHTML=`<div class="scn-lbl">${esc(scene.title)}</div>
+      <div class="pt"><div class="pf" style="width:${p*100}%;background:${col}"></div></div>
+      <div class="pl">${r}/${d.length} · ${Math.round(p*100)}%</div>`;
+    item.onclick=()=>{
+      S.ui.si=idx;
+      document.getElementById('s'+scene.id)?.scrollIntoView({behavior:'smooth',block:'start'});
+      document.querySelectorAll('.scn').forEach(e=>e.classList.remove('on'));
+      item.classList.add('on');
+    };
+    nav.appendChild(item);
+  });
+}
+
+/* ── CHAR CHIPS ── mit Bearbeiten-Modus zum Ausblenden von Rollen */
+function renderChips(){
+  const wrap=g('cwrap');wrap.innerHTML='';
+  const sc=as();
+  /* chips-bar nur zeigen wenn ein Skript geladen ist */
+  const bar=g('chips-bar');
+  if(!sc){bar.className='';return;}
+  const edit=S.ui.chipsEdit;
+  const visible=Object.entries(sc.characters).filter(([,ch])=>!ch.hidden);
+  const hiddenCnt=Object.values(sc.characters).filter(ch=>ch.hidden).length;
+
+  /* chips-bar immer einblenden (auch wenn leer) */
+  bar.className='visible'+(S.ui.chipsCollapsed?' collapsed':'');
+  const icon=g('chips-toggle-icon');
+  const lbl=g('chips-toggle-label');
+  if(icon)icon.style.transform=S.ui.chipsCollapsed?'rotate(-90deg)':'rotate(0deg)';
+  if(lbl){
+    const activeLabel=S.ui.fc?` · ${S.ui.fc}`:'';
+    lbl.textContent=`Rollen${activeLabel}`;
+  }
+
+  /* cwrap collapsed-Klasse synchronisieren */
+  wrap.classList.toggle('collapsed',!!S.ui.chipsCollapsed);
+
+  /* ✏ / Fertig-Button */
+  const eb=mk('div','cchip');
+  eb.style.cssText='flex-shrink:0;color:'+(edit?'var(--blue)':'var(--label3)')
+    +';background:'+(edit?'rgba(10,132,255,.15)':'var(--fill2)');
+  eb.textContent=edit?'✓ Fertig':'✏';
+  eb.title=edit?'Bearbeiten beenden':'Rollen bearbeiten';
+  eb.onclick=()=>{S.ui.chipsEdit=!S.ui.chipsEdit;renderChips();};
+  wrap.appendChild(eb);
+
+  /* "Alle"-Chip (nur im Normal-Modus) */
+  if(!edit){
+    const ac=mk('div','cchip'+(S.ui.fc?'':' on'));
+    ac.textContent='Alle';ac.style.cssText='color:var(--label2);background:var(--fill2)';
+    ac.onclick=()=>{S.ui.fc=null;renderScript();renderChips();};
+    wrap.appendChild(ac);
+  }
+
+  /* Sichtbare Rollen */
+  visible.forEach(([name,ch])=>{
+    if(edit){
+      /* Im Bearbeiten-Modus: Chip + × zum Ausblenden */
+      const cw=mk('div','cchip-wrap');
+      const c=mk('div','cchip');
+      c.textContent=name.length>12?name.slice(0,11)+'…':name;
+      c.style.color=ch.color;c.style.background=ch.color+'28';c.title=name;
+      const x=mk('div','cchip-x');x.textContent='×';
+      x.title='Rolle ausblenden';
+      x.onclick=()=>{
+        ch.hidden=true;
+        if(S.ui.fc===name)S.ui.fc=null;
+        save();renderScript();renderChips();
+      };
+      cw.append(c,x);wrap.appendChild(cw);
+    }else{
+      const c=mk('div','cchip'+(S.ui.fc===name?' on':''));
+      c.textContent=name.length>12?name.slice(0,11)+'…':name;
+      c.style.color=ch.color;c.style.background=ch.color+'28';c.title=name;
+      c.onclick=()=>{S.ui.fc=S.ui.fc===name?null:name;renderScript();renderChips();};
+      wrap.appendChild(c);
+    }
+  });
+
+  /* Hinweis auf ausgeblendete Rollen → öffnet Farb-Modal zum Wiederherstellen */
+  if(hiddenCnt){
+    const hc=mk('div','cchip');
+    hc.style.cssText='color:var(--label3);background:var(--fill2);flex-shrink:0';
+    hc.textContent=`👁 ${hiddenCnt}`;
+    hc.title=`${hiddenCnt} ausgeblendete Rolle(n) – im 🎨-Dialog wiederherstellen`;
+    hc.onclick=openMod;
+    wrap.appendChild(hc);
+  }
+}
+
+/* ── SCRIPT VIEW */
+function renderScript(){
+  const wrap=g('scontent'),sc=as();
+  if(!sc){
+    wrap.innerHTML=`<div id="welcome">
+      <div class="wico">🎬</div><h2>Kein Drehbuch</h2>
+      <p>Erstelle ein Projekt und lade ein PDF-Drehbuch.</p>
+      <button class="bigbtn" onclick="newProj()">＋ Projekt erstellen</button>
+    </div>`;
+    renderHeader();return;
+  }
+  wrap.innerHTML='';
+  const q=S.ui.q.toLowerCase(),fc=S.ui.fc;
+  const ntlids=new Set((sc.nurtons||[]).filter(n=>n.type==='dialog'&&n.lineId!=null).map(n=>n.lineId));
+
+  if(sc.scenes.length===0){
+    wrap.innerHTML=`<div style="padding:40px 20px;text-align:center;color:var(--label3);line-height:2;font-size:15px">
+      ⚠ Keine Szenen erkannt.<br><small style="font-size:13px">Mögliche Ursachen: Gescannte PDF · Verschlüsselt · Ungewöhnliches Format</small>
+    </div>`;
+    renderHeader();return;
+  }
+
+  sc.scenes.forEach(scene=>{
+    const d=scene.lines.filter(l=>l.type==='dialogue');
+    const r=d.filter(l=>sc.recorded[l.id]).length;
+    const p=d.length?r/d.length:0;
+    const col=p>=1?'#30d158':p>.5?'#ff9f0a':'#ff453a';
+
+    const sec=mk('div','ssec');sec.id='s'+scene.id;
+
+    const hd=mk('div','shd');
+    hd.innerHTML=`<span>${esc(scene.title)}</span>
+      <div class="shd-stats">
+        <span>${r}/${d.length}</span>
+        <div class="smbar"><div class="smfill" style="width:${p*100}%;background:${col}"></div></div>
+        <span>${Math.round(p*100)}%</span>
+      </div>`;
+    sec.appendChild(hd);
+
+    // Notes
+    const hasN=sc.notes[scene.id]?.trim();
+    const nb=mk('button','ntog');
+    nb.innerHTML=(hasN?'📝 '+sc.notes[scene.id].slice(0,40)+(sc.notes[scene.id].length>40?'…':''):'＋ Notiz');
+    const ta=mk('textarea','nta'+(hasN?' open':''));
+    ta.placeholder='Continuity, Anweisungen …';ta.value=sc.notes[scene.id]||'';
+    ta.oninput=()=>{sc.notes[scene.id]=ta.value;nb.innerHTML=ta.value.trim()?'📝 '+ta.value.slice(0,40):'＋ Notiz';save();};
+    nb.onclick=()=>ta.classList.toggle('open');
+    sec.append(nb,ta);
+
+    let hasVis=false;
+    scene.lines.forEach(line=>{
+      if(fc&&(line.type==='action'||line.type==='transition'))return;
+      if(fc&&line.character&&line.character!==fc)return;
+      if(q&&!line.text.toLowerCase().includes(q))return;
+      hasVis=true;
+
+      const div=mk('div','ln ln-'+line.type);
+      if(line.type==='character'){
+        const ch=sc.characters[line.character];
+        if(ch)div.style.color=ch.color;
+        if(line.isOff){const b=mk('span','off-badge');b.textContent='OFF';div.appendChild(b);}
+      }
+      if(line.type==='dialogue'){
+        const ch=sc.characters[line.character];
+        if(ch)div.style.borderLeftColor=ch.color;
+        const isNt=ntlids.has(line.id);
+        if(isNt)div.classList.add('isnt');
+        if(sc.recorded[line.id])div.classList.add('rec');
+        if(line.isOff)div.classList.add('isoff');
+        if(S.mode==='g')div.classList.add('gclk');
+        if(S.mode==='w')div.classList.add('wclk');
+        div.onclick=(e)=>{
+          if(S.mode==='w'){
+            const ws=e.target.closest('[data-wkey]');
+            if(ws)toggleWordMarker(ws.dataset.wkey);
+            return;
+          }
+          if(S.mode==='d')addNtDialog(scene,line);
+          else if(S.mode==='g')addNtGerausch(scene,line);
+          else togRec(line.id);
+        };
+        if(isNt){
+          const ico=mk('span','ntlbl');ico.textContent='🎙';ico.title='Entfernen';
+          ico.onclick=e=>{e.stopPropagation();const n=sc.nurtons.find(n=>n.lineId===line.id);if(n)delNurton(n.id);};
+          div.appendChild(ico);
+        }
+        /* Long Press → Action Sheet (mobil): Alle Aktionen ohne Tastatur */
+        attachLP(div,()=>showAS(scene,line));
+      }
+      if(line.type==='action'&&S.mode==='g'){
+        div.classList.add('gclk');div.onclick=()=>addNtGerausch(scene,line);
+      }
+      const sp=document.createElement('span');
+      if(line.type==='dialogue'){
+        const hasWM=sc.wordMarkers&&Object.keys(sc.wordMarkers).some(k=>k.startsWith(line.id+'_'));
+        if(S.mode==='w'||hasWM){
+          buildWordSpans(sp,line.text,line.id,sc,q);
+        } else {
+          sp.innerHTML=q?hilite(esc(line.text),q):esc(line.text);
+        }
+      } else {
+        sp.innerHTML=q?hilite(esc(line.text),q):esc(line.text);
+      }
+      div.insertBefore(sp,div.firstChild);
+      sec.appendChild(div);
+    });
+    if(!q||hasVis)wrap.appendChild(sec);
+  });
+  renderHeader();
+}
+
+/* ── NURTON TABLE (Karten mobil · Tabelle Desktop) — nach Szenen gruppiert */
+function renderNtTable(){
+  const wrap=g('ncontent'),sc=as();
+  if(!sc){wrap.innerHTML='<p style="padding:20px;color:var(--label3)">Kein Drehbuch geladen.</p>';return;}
+  const typ=S.ntab==='d'?'dialog':'gerausch';
+  const nts=(sc.nurtons||[]).filter(n=>n.type===typ);
+  wrap.innerHTML='';
+
+  // Stats-Leiste
+  const stats=mk('div','ntstats');
+  const open=nts.filter(n=>n.status==='offen').length;
+  const done=nts.filter(n=>n.status==='erledigt').length;
+  stats.innerHTML=`<span class="nts o">● ${open} offen</span>
+    <span class="nts d">✓ ${done} erledigt</span>
+    <span class="nts t">${nts.length}</span>`;
+  wrap.appendChild(stats);
+
+  if(!nts.length){
+    const em=mk('div','ntempty');
+    em.innerHTML=typ==='dialog'
+      ?'🎙 Keine Dialog-Nurtöne<br><small>Dialog-Marker aktivieren und Zeilen antippen.<br>(OFF)/(V.O.)-Zeilen werden automatisch erfasst.</small>'
+      :'🔊 Keine Geräusche<br><small>Geräusch-Marker aktivieren und Aktionszeilen antippen.</small>';
+    wrap.appendChild(em);return;
+  }
+
+  /* Nurtöne nach Szene gruppieren — Reihenfolge aus sc.scenes beibehalten */
+  const sceneOrder=sc.scenes.map(s=>s.id);
+  const groups=new Map();
+  nts.forEach(n=>{
+    if(!groups.has(n.sceneId))groups.set(n.sceneId,{title:n.sceneTitle,items:[]});
+    groups.get(n.sceneId).items.push(n);
+  });
+  const sortedGroups=[...groups.entries()]
+    .sort(([a],[b])=>{
+      const ia=sceneOrder.indexOf(a), ib=sceneOrder.indexOf(b);
+      return (ia<0?9999:ia)-(ib<0?9999:ib);
+    });
+
+  /* Globaler Zähler über alle Szenen */
+  let globalIdx=0;
+
+  /* ── MOBILE: Karten ── */
+  const cards=mk('div','nt-cards');
+
+  sortedGroups.forEach(([sceneId,group])=>{
+    const grpOpen=group.items.filter(n=>n.status==='offen').length;
+    const grpDone=group.items.filter(n=>n.status==='erledigt').length;
+    const grpTotal=group.items.length;
+    const pct=grpTotal?Math.round(grpDone/grpTotal*100):0;
+
+    /* Szenen-Gruppenheader */
+    const hd=mk('div','nt-grp-hd');
+    hd.innerHTML=`<span>${esc(group.title)}</span>
+      <div class="nt-grp-prog">
+        <span class="nt-grp-prog-done">✓${grpDone}</span>
+        <span class="nt-grp-prog-open">○${grpOpen}</span>
+        <div class="nt-grp-bar"><div class="nt-grp-bar-fill" style="width:${pct}%"></div></div>
+      </div>`;
+    cards.appendChild(hd);
+
+    group.items.forEach(n=>{
+      globalIdx++;
+      const ch=sc.characters[n.character];
+      const cc=ch?ch.color:'var(--label3)';
+      const card=mk('div','nt-card'+(n.status==='erledigt'?' done':''));
+      const top=mk('div','nt-card-top');
+      const char=mk('span','nt-card-char');char.textContent=n.character||'—';char.style.color=cc;
+      const numsp=mk('span');numsp.textContent='#'+globalIdx;numsp.style.cssText='font-size:10px;color:var(--label4);margin-left:auto;flex-shrink:0';
+      const badges=mk('div','nt-badges');
+      const b1=mk('span','badge '+(n.auto?'auto':'man'));b1.textContent=n.auto?'AUTO':'MARKER';
+      badges.appendChild(b1);
+      if(n.isOff){const b2=mk('span','badge off');b2.textContent='OFF';badges.appendChild(b2);}
+      top.append(char,badges,numsp);
+      const text=mk('div','nt-card-text');text.textContent=n.text;
+      const bottom=mk('div','nt-card-bottom');
+      const stbtn=mk('button','stbtn '+n.status);
+      stbtn.textContent=n.status==='erledigt'?'✓ Erledigt':'○ Offen';
+      stbtn.onclick=()=>togNtStatus(n.id);
+      const note=mk('input','nt-note');note.type='text';note.value=n.note||'';
+      note.placeholder='Notiz …';note.onchange=e=>updNtNote(n.id,e.target.value);
+      const del=mk('button','nt-del-btn');del.textContent='✕';del.onclick=()=>delNurton(n.id);
+      bottom.append(stbtn,note,del);
+      card.append(top,text,bottom);
+      cards.appendChild(card);
+    });
+  });
+  wrap.appendChild(cards);
+
+  /* ── DESKTOP: Tabelle ── */
+  const tw=mk('div','ntbl-wrap');
+  const tbl=document.createElement('table');tbl.className='nttbl';
+  const cols=typ==='dialog'?8:7;
+  tbl.innerHTML=typ==='dialog'
+    ?'<thead><tr><th>#</th><th>Rolle</th><th>Dialog</th><th>Typ</th><th>Status</th><th>Notiz</th><th></th></tr></thead>'
+    :'<thead><tr><th>#</th><th>Geräusch</th><th>Referenz</th><th>Status</th><th>Notiz</th><th></th></tr></thead>';
+  const tbody=document.createElement('tbody');
+  let tblIdx=0;
+
+  sortedGroups.forEach(([sceneId,group])=>{
+    const grpOpen=group.items.filter(n=>n.status==='offen').length;
+    const grpDone=group.items.filter(n=>n.status==='erledigt').length;
+
+    /* Szenen-Trennzeile */
+    const sep=mk('tr','nt-sep-row');
+    sep.innerHTML=`<td colspan="${cols}">${esc(group.title)}
+      <span class="nt-sep-stats">✓${grpDone} erledigt · ○${grpOpen} offen</span></td>`;
+    tbody.appendChild(sep);
+
+    group.items.forEach(n=>{
+      tblIdx++;
+      const tr=mk('tr',n.status==='erledigt'?'done':'');
+      const ch=sc.characters[n.character];const cc=ch?ch.color:'var(--label3)';
+      if(typ==='dialog'){
+        tr.innerHTML=`
+          <td class="td-num">${tblIdx}</td>
+          <td class="td-char" style="color:${cc}">${esc(n.character||'–')}</td>
+          <td class="td-text">${esc(n.text)}</td>
+          <td>${n.auto?'<span class="badge auto">AUTO</span>':'<span class="badge man">MARKER</span>'}${n.isOff?'<span class="badge off">OFF</span>':''}</td>
+          <td><button class="stbtn ${n.status}" onclick="togNtStatus('${n.id}')">${n.status==='erledigt'?'✓ Erledigt':'○ Offen'}</button></td>
+          <td><input class="td-note" value="${esc(n.note||'')}" placeholder="Notiz…" onchange="updNtNote('${n.id}',this.value)"></td>
+          <td><button class="td-del" onclick="delNurton('${n.id}')">✕</button></td>`;
+      }else{
+        tr.innerHTML=`
+          <td class="td-num">${tblIdx}</td>
+          <td class="td-text">${esc(n.text)}</td>
+          <td class="td-ref" title="${esc(n.refText||'')}">${esc((n.refText||'').slice(0,36))}${(n.refText||'').length>36?'…':''}</td>
+          <td><button class="stbtn ${n.status}" onclick="togNtStatus('${n.id}')">${n.status==='erledigt'?'✓ Erledigt':'○ Offen'}</button></td>
+          <td><input class="td-note" value="${esc(n.note||'')}" placeholder="Notiz…" onchange="updNtNote('${n.id}',this.value)"></td>
+          <td><button class="td-del" onclick="delNurton('${n.id}')">✕</button></td>`;
+      }
+      tbody.appendChild(tr);
+    });
+  });
+  tbl.appendChild(tbody);tw.appendChild(tbl);wrap.appendChild(tw);
+}
+
+/* ── BADGE */
+function renderBadge(){
+  const sc=as();
+  const cnt=sc?(sc.nurtons||[]).filter(n=>n.status==='offen').length:0;
+  // Tab badge
+  const ntb=g('nt-tab-badge');
+  ntb.textContent=cnt||'';ntb.classList.toggle('on',cnt>0);
+  // Segmented badge
+  const sc2=g('seg-nt-cnt');
+  if(sc2)sc2.textContent=cnt?`(${cnt})`:'';
+  // Sidebar badges
+  document.querySelectorAll('.srow[data-pid][data-sid]').forEach(sr=>{
+    const proj=S.projects[sr.dataset.pid];if(!proj)return;
+    const scr=proj.scripts[sr.dataset.sid];if(!scr)return;
+    const open=(scr.nurtons||[]).filter(n=>n.status==='offen').length;
+    let badge=sr.querySelector('.nt-badge');
+    if(open){if(!badge){badge=mk('span','nt-badge');sr.insertBefore(badge,sr.querySelector('.srow-del'));}badge.textContent=open;}
+    else if(badge)badge.remove();
+  });
+}
+
+/* ── MOBILE PROJECTS VIEW */
+function renderProjMobile(){
+  const scroll=g('proj-scroll');scroll.innerHTML='';
+  Object.values(S.projects).sort((a,b)=>b.created-a.created).forEach(proj=>{
+    const card=mk('div','proj-card');
+    const hd=mk('div','proj-card-hd');
+    const h3=mk('h3');h3.textContent=proj.name;
+    const btns=mk('div','proj-hd-btns');
+    const addBtn=mk('button','proj-hd-btn');addBtn.textContent='＋ PDF';
+    addBtn.onclick=()=>uploadTo(proj.id);
+    const renBtn=mk('button','proj-hd-btn');renBtn.textContent='✏︎';
+    renBtn.onclick=()=>renProj(proj.id);
+    const delBtn=mk('button','proj-hd-btn del');delBtn.textContent='✕';
+    delBtn.onclick=()=>delProj(proj.id);
+    btns.append(addBtn,renBtn,delBtn);hd.append(h3,btns);
+    const rows=mk('div');
+    Object.values(proj.scripts).sort((a,b)=>a.name.localeCompare(b.name)).forEach(sc=>{
+      const row=mk('div','script-row'+(S.sid===sc.id?' on':''));
+      const info=mk('div','script-row-info');
+      const nm=mk('div','script-row-name');nm.textContent=sc.name;
+      const meta=mk('div','script-row-meta');
+      const dlg=sc.scenes.reduce((n,s)=>n+s.lines.filter(l=>l.type==='dialogue').length,0);
+      const rec=sc.scenes.reduce((n,s)=>n+s.lines.filter(l=>l.type==='dialogue'&&sc.recorded[l.id]).length,0);
+      const openN=(sc.nurtons||[]).filter(n=>n.status==='offen').length;
+      meta.textContent=`${sc.scenes.length} Szenen · ${rec}/${dlg} aufgen.`+(openN?` · ${openN} Nurtöne`:'');
+      info.append(nm,meta);
+      const chevron=mk('span','script-row-chevron');chevron.textContent='›';
+      row.append(info,chevron);
+      row.onclick=()=>selScript(proj.id,sc.id);
+      row.ondblclick=()=>renScript(proj.id,sc.id);
+      rows.appendChild(row);
+    });
+    const addSc=mk('div','add-script-row');addSc.textContent='＋ PDF hinzufügen';
+    addSc.onclick=()=>uploadTo(proj.id);
+    rows.appendChild(addSc);
+    card.append(hd,rows);scroll.appendChild(card);
+  });
+  const addP=mk('div','add-proj-card');addP.innerHTML='＋&nbsp; Neues Projekt';
+  addP.onclick=newProj;scroll.appendChild(addP);
+
+  /* Backup-Karte am Ende der mobilen Projektansicht */
+  const bkCard=mk('div','proj-bk-card');
+  const bkHd=mk('div','proj-bk-hd');
+  bkHd.innerHTML='💾 Datensicherung';
+  const bkInfo=mk('div','proj-bk-info');
+  const projCnt=Object.keys(S.projects).length;
+  const scriptCnt=Object.values(S.projects).reduce((n,p)=>n+Object.keys(p.scripts).length,0);
+  bkInfo.innerHTML=
+    `<strong style="color:var(--label)">${projCnt} Projekt${projCnt!==1?'e':''}</strong> · `+
+    `<strong style="color:var(--label)">${scriptCnt} Drehbuch${scriptCnt!==1?'bücher':''}</strong>`+
+    `<br>Alle Daten (Szenen, Nurtöne, Markierungen, Notizen) als .json sichern`+
+    `<br><span style="color:var(--red)">⚠ Achtung:</span> Browser-Daten löschen entfernt alles — regelmäßig sichern!`;
+  const bkBtns=mk('div','proj-bk-btns');
+  const expBtn=mk('button','bk-btn');expBtn.innerHTML='💾 Alles sichern';expBtn.onclick=exportBackup;
+  const impBtn=mk('button','bk-btn imp');impBtn.innerHTML='📂 Laden';impBtn.onclick=()=>g('bk-in').click();
+  bkBtns.append(expBtn,impBtn);
+  bkCard.append(bkHd,bkInfo,bkBtns);
+  scroll.appendChild(bkCard);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   TONBERICHT — Sound Report
+   Drehtage · Einstellungen A–Z · Takes · Dialog- & Geräusch-Kriterien
+═══════════════════════════════════════════════════════════════ */
+const TB_SAMPLERATES=['44100','48000','88200','96000','192000'];
+const TB_BITDEPTHS=['16','24','32'];
+const TB_DEFAULT_NOISE=[
+  'Flugzeug','Sirene','Wind','Stimmen','Klimaanlage',
+  'Schritte','Kameramotor','Handy/Vibration','Hund/Tiere','Regen',
+  'Verkehr','Tür/Knarren','Elektrisches Brummen','Schmuck/Kleidung'
+];
+
+/* ── Initialisierung ─────────────────────────────────────────── */
+function tbInit(sc){
+  if(!sc.tonbericht)sc.tonbericht={drehtage:{},sceneData:{},customNoise:[],projekt:{kuerzel:'',typ:'film',episode:''}};
+  if(!sc.tonbericht.customNoise)sc.tonbericht.customNoise=[];
+  if(!sc.tonbericht.projekt)sc.tonbericht.projekt={kuerzel:'',typ:'film',episode:''};
+  sc.scenes.forEach(scene=>{
+    if(!sc.tonbericht.sceneData[scene.id])
+      sc.tonbericht.sceneData[scene.id]={drehtag_id:null,einstellungen:tbDefaultEinstellungen(scene,sc)};
+    /* Kanal-Migration: alter String → Array */
+    sc.tonbericht.sceneData[scene.id].einstellungen.forEach(ei=>{
+      if(typeof ei.kanal==='string')ei.kanal=ei.kanal?[ei.kanal]:[];
+    });
+  });
+}
+function tbDefaultEinstellungen(scene,sc){
+  const chars=tbSceneChars(scene,sc);
+  return ['A','B','C','D','E'].map((letter,i)=>({
+    id:'ei_'+Date.now()+'_'+i+'_'+Math.random().toString(36).slice(2,7),
+    letter,kanal:[],
+    activeChars:Object.fromEntries(chars.map(c=>[c,true])),
+    takes:[]
+  }));
+}
+function tbSceneChars(scene,sc){
+  const set=new Set();
+  scene.lines.forEach(l=>{if((l.type==='dialogue'||l.type==='character')&&l.character)set.add(l.character);});
+  return [...set];
+}
+function tbGetSD(sc,sceneId){
+  tbInit(sc);
+  if(!sc.tonbericht.sceneData[sceneId]){
+    const scene=sc.scenes.find(s=>s.id===sceneId);
+    if(!scene)return null;
+    sc.tonbericht.sceneData[sceneId]={drehtag_id:null,einstellungen:tbDefaultEinstellungen(scene,sc)};
+  }
+  return sc.tonbericht.sceneData[sceneId];
+}
+
+/* ── Drehtag CRUD ────────────────────────────────────────────── */
+function tbNewDrehtag(){
+  const sc=as();if(!sc)return;
+  tbInit(sc);
+  const id='dt_'+Date.now();
+  const num=Object.keys(sc.tonbericht.drehtage).length+1;
+  sc.tonbericht.drehtage[id]={id,datum:'',drehtag:String(num),tonmeister:'',telefon:'',email:'',mikrofon:'',samplerate:'48000',bitdepth:'24'};
+  save();renderTonbericht();
+}
+function tbDelDrehtag(id){
+  const sc=as();if(!sc)return;
+  if(!confirm('Drehtag löschen?'))return;
+  delete sc.tonbericht.drehtage[id];
+  Object.values(sc.tonbericht.sceneData).forEach(sd=>{if(sd.drehtag_id===id)sd.drehtag_id=null;});
+  save();renderTonbericht();
+}
+function tbUpdateDrehtag(id,field,val){
+  const sc=as();if(!sc)return;
+  if(sc.tonbericht.drehtage[id]){sc.tonbericht.drehtage[id][field]=val;save();}
+}
+function tbAssignDrehtag(sceneId,dtId){
+  const sc=as();if(!sc)return;
+  const sd=tbGetSD(sc,sceneId);
+  if(sd){sd.drehtag_id=dtId||null;save();}
+}
+
+/* ── Einstellung CRUD ────────────────────────────────────────── */
+function tbAddEi(sceneId){
+  const sc=as();if(!sc)return;
+  const sd=tbGetSD(sc,sceneId);
+  const used=sd.einstellungen.map(e=>e.letter);
+  const next='ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').find(l=>!used.includes(l));
+  if(!next){showToast('Maximum (26) Einstellungen erreicht','warn');return;}
+  const scene=sc.scenes.find(s=>s.id===sceneId);
+  const chars=scene?tbSceneChars(scene,sc):[];
+  sd.einstellungen.push({
+    id:'ei_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+    letter:next,kanal:[],
+    activeChars:Object.fromEntries(chars.map(c=>[c,true])),
+    takes:[]
+  });
+  save();renderTonbericht();
+}
+function tbRemEi(sceneId){
+  const sc=as();if(!sc)return;
+  const sd=tbGetSD(sc,sceneId);
+  if(!sd.einstellungen.length){showToast('Keine Einstellungen vorhanden','warn');return;}
+  const last=sd.einstellungen[sd.einstellungen.length-1];
+  if(last.takes.length>0&&!confirm(`Einstellung ${last.letter} hat ${last.takes.length} Take(s). Löschen?`))return;
+  sd.einstellungen.pop();
+  save();renderTonbericht();
+}
+function tbToggleChar(sceneId,eiId,charName){
+  const sc=as();if(!sc)return;
+  const sd=tbGetSD(sc,sceneId);
+  const ei=sd.einstellungen.find(e=>e.id===eiId);if(!ei)return;
+  ei.activeChars[charName]=!ei.activeChars[charName];
+  save();renderTonbericht();
+}
+function tbToggleKanal(sceneId,eiId,kanalName){
+  const sc=as();if(!sc)return;
+  const sd=tbGetSD(sc,sceneId);
+  const ei=sd.einstellungen.find(e=>e.id===eiId);if(!ei)return;
+  if(!Array.isArray(ei.kanal))ei.kanal=[];
+  const i=ei.kanal.indexOf(kanalName);
+  if(i>=0)ei.kanal.splice(i,1);else ei.kanal.push(kanalName);
+  save();renderTonbericht();
+}
+
+/* ── Take CRUD ───────────────────────────────────────────────── */
+function tbAddTake(sceneId,eiId){
+  const sc=as();if(!sc)return;
+  const sd=tbGetSD(sc,sceneId);
+  const ei=sd.einstellungen.find(e=>e.id===eiId);if(!ei)return;
+  ei.takes.push({
+    id:'tk_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+    nummer:ei.takes.length+1,label:'',sterne:0,isBest:false,
+    dialog:{
+      verstaendlichkeit:null,
+      textabweichung:false,rascheln:false,ueberlappen:false,
+      versprecher:false,atemgeraeusch:false,hallecho:false,rauschen:false
+    },
+    stoergeraeusche:[],kommentar:''
+  });
+  save();renderTonbericht();
+}
+function tbDelTake(sceneId,eiId,tkId){
+  const sc=as();if(!sc)return;
+  const sd=tbGetSD(sc,sceneId);
+  const ei=sd.einstellungen.find(e=>e.id===eiId);if(!ei)return;
+  ei.takes=ei.takes.filter(t=>t.id!==tkId);
+  ei.takes.forEach((t,i)=>t.nummer=i+1);
+  save();renderTonbericht();
+}
+function tbUpdTake(sceneId,eiId,tkId,field,val){
+  const sc=as();if(!sc)return;
+  const sd=tbGetSD(sc,sceneId);
+  const ei=sd.einstellungen.find(e=>e.id===eiId);if(!ei)return;
+  const tk=ei.takes.find(t=>t.id===tkId);if(!tk)return;
+  if(field.startsWith('d.')){tk.dialog[field.slice(2)]=val;}
+  else{tk[field]=val;}
+  save();
+}
+function tbSetSterne(sceneId,eiId,tkId,val){
+  const sc=as();if(!sc)return;
+  const sd=tbGetSD(sc,sceneId);
+  const ei=sd.einstellungen.find(e=>e.id===eiId);if(!ei)return;
+  const tk=ei.takes.find(t=>t.id===tkId);if(!tk)return;
+  tk.sterne=tk.sterne===val?0:val;
+  save();renderTonbericht();
+}
+function tbToggleBest(sceneId,eiId,tkId){
+  const sc=as();if(!sc)return;
+  const sd=tbGetSD(sc,sceneId);
+  const ei=sd.einstellungen.find(e=>e.id===eiId);if(!ei)return;
+  const tk=ei.takes.find(t=>t.id===tkId);if(!tk)return;
+  tk.isBest=!tk.isBest;
+  save();renderTonbericht();
+}
+function tbReorderTake(sceneId,eiId,tkId,dir){
+  /* dir: -1=up, +1=down */
+  const sc=as();if(!sc)return;
+  const sd=tbGetSD(sc,sceneId);
+  const ei=sd.einstellungen.find(e=>e.id===eiId);if(!ei)return;
+  const i=ei.takes.findIndex(t=>t.id===tkId);if(i<0)return;
+  const ni=i+dir;if(ni<0||ni>=ei.takes.length)return;
+  [ei.takes[i],ei.takes[ni]]=[ei.takes[ni],ei.takes[i]];
+  ei.takes.forEach((t,idx)=>t.nummer=idx+1);
+  save();renderTonbericht();
+}
+function tbMoveTake(sceneId,fromEiId,tkId,toEiId){
+  if(fromEiId===toEiId)return;
+  const sc=as();if(!sc)return;
+  const sd=tbGetSD(sc,sceneId);
+  const fromEi=sd.einstellungen.find(e=>e.id===fromEiId);if(!fromEi)return;
+  const toEi=sd.einstellungen.find(e=>e.id===toEiId);if(!toEi)return;
+  const idx=fromEi.takes.findIndex(t=>t.id===tkId);if(idx<0)return;
+  const [tk]=fromEi.takes.splice(idx,1);
+  fromEi.takes.forEach((t,i)=>t.nummer=i+1);
+  tk.nummer=toEi.takes.length+1;
+  toEi.takes.push(tk);
+  save();renderTonbericht();
+}
+function tbToggleNoise(sceneId,eiId,tkId,noise){
+  const sc=as();if(!sc)return;
+  const sd=tbGetSD(sc,sceneId);
+  const ei=sd.einstellungen.find(e=>e.id===eiId);if(!ei)return;
+  const tk=ei.takes.find(t=>t.id===tkId);if(!tk)return;
+  const i=tk.stoergeraeusche.indexOf(noise);
+  if(i>=0)tk.stoergeraeusche.splice(i,1);else tk.stoergeraeusche.push(noise);
+  save();renderTonbericht();
+}
+function tbAddCustomNoise(sceneId,eiId,tkId,noise){
+  const sc=as();if(!sc)return;
+  noise=noise.trim();if(!noise)return;
+  if(!sc.tonbericht.customNoise)sc.tonbericht.customNoise=[];
+  if(!sc.tonbericht.customNoise.includes(noise))sc.tonbericht.customNoise.push(noise);
+  tbToggleNoise(sceneId,eiId,tkId,noise);
+}
+function tbUpdProjekt(field,val){
+  const sc=as();if(!sc)return;
+  tbInit(sc);
+  sc.tonbericht.projekt[field]=val;
+  save();renderTonbericht();
+}
+/* ── Namens-Schema ───────────────────────────────────────────── */
+function tbGetKuerzel(sc){
+  return ((sc.tonbericht.projekt||{}).kuerzel||'???').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4)||'???';
+}
+function tbSceneNum(sc,sceneId){
+  const idx=sc.scenes.findIndex(s=>s.id===sceneId);
+  return String(idx+1).padStart(2,'0');
+}
+function tbBuildEiName(sc,sceneId,eiLetter){
+  const p=sc.tonbericht.projekt||{};
+  const k=tbGetKuerzel(sc);
+  const sn=tbSceneNum(sc,sceneId);
+  if(p.typ==='serie'&&String(p.episode||'').trim()){
+    const ep=String(p.episode).trim().padStart(2,'0');
+    return `${k}-${ep}-${sn}-${eiLetter}`;
+  }
+  return `${k}-${sn}-${eiLetter}`;
+}
+function tbBuildTakeName(sc,sceneId,eiLetter,takeNummer){
+  return tbBuildEiName(sc,sceneId,eiLetter)+'T'+String(takeNummer).padStart(2,'0');
+}
+function tbCopyName(name,btn){
+  navigator.clipboard?.writeText(name).then(()=>{
+    const orig=btn.textContent;btn.textContent='✓';
+    setTimeout(()=>btn.textContent=orig,1200);
+  }).catch(()=>{});
+}
+
+/* ── RENDER ──────────────────────────────────────────────────── */
+function renderTbProjekt(sc){
+  const p=sc.tonbericht.projekt;
+  const card=mk('div','tb-projekt-card');
+  const hd=mk('div','tb-projekt-hd');
+  const title=mk('div','tb-projekt-hd-title');title.textContent='🎬 Produktionskonfiguration';
+  /* Vorschau des aktuellen Namensschemas */
+  const preview=mk('div');
+  preview.style.cssText='font-family:monospace;font-size:11px;color:var(--blue);opacity:.8';
+  const exScene='01',exEi='A',exTk='T01';
+  const k=tbGetKuerzel(sc);
+  if(p.typ==='serie'&&String(p.episode||'').trim()){
+    const ep=String(p.episode).trim().padStart(2,'0');
+    preview.textContent=`${k}-${ep}-${exScene}-${exEi}${exTk}`;
+  } else {
+    preview.textContent=`${k}-${exScene}-${exEi}${exTk}`;
+  }
+  hd.append(title,preview);
+  card.appendChild(hd);
+
+  const body=mk('div','tb-projekt-body');
+
+  /* Kürzel */
+  const kRow=mk('div','tb-projekt-row');
+  const kLbl=mk('label');kLbl.textContent='Projektkürzel (3–4 Zeichen)';
+  const kIn=mk('input','tb-input');
+  kIn.placeholder='z.B. ORU';kIn.value=p.kuerzel||'';kIn.maxLength=4;
+  kIn.style.textTransform='uppercase';kIn.style.letterSpacing='.1em';kIn.style.fontWeight='700';
+  kIn.oninput=()=>{
+    kIn.value=kIn.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4);
+    tbUpdProjekt('kuerzel',kIn.value);
+  };
+  kRow.append(kLbl,kIn);body.appendChild(kRow);
+
+  /* Typ: Film / Serie */
+  const typRow=mk('div','tb-projekt-row');
+  const typLbl=mk('label');typLbl.textContent='Produktionstyp';
+  const typSeg=mk('div','tb-seg-row');
+  ['film','serie'].forEach(t=>{
+    const btn=mk('button','tb-seg-btn'+(p.typ===t?' on':''));
+    btn.textContent=t==='film'?'🎬 Film':'📺 Serie';
+    btn.onclick=()=>tbUpdProjekt('typ',t);
+    typSeg.appendChild(btn);
+  });
+  typRow.append(typLbl,typSeg);body.appendChild(typRow);
+
+  /* Episodennummer (nur Serie) */
+  if(p.typ==='serie'){
+    const epRow=mk('div','tb-projekt-row');
+    const epLbl=mk('label');epLbl.textContent='Episodennummer';
+    const epIn=mk('input','tb-input');
+    epIn.placeholder='z.B. 1';epIn.value=p.episode||'';epIn.type='number';epIn.min='1';
+    epIn.style.maxWidth='100px';
+    epIn.oninput=()=>tbUpdProjekt('episode',epIn.value);
+    epRow.append(epLbl,epIn);body.appendChild(epRow);
+  }
+
+  card.appendChild(body);
+  return card;
+}
+
+function renderTonbericht(){
+  const wrap=g('tb-content'),sc=as();
+  if(!wrap)return;
+  if(!sc){
+    wrap.innerHTML='<div style="padding:48px 24px;text-align:center;color:var(--label3);font-size:15px">🎚<br><br>Kein Drehbuch geladen.</div>';
+    return;
+  }
+  tbInit(sc);
+
+  /* Scroll-Position merken */
+  const scrollY=wrap.scrollTop;
+  wrap.innerHTML='';
+
+  /* ─ Projektkonfiguration ─ */
+  wrap.appendChild(renderTbProjekt(sc));
+
+  /* ─ Drehtage-Sektion ─ */
+  const dtSec=mk('div','tb-section');
+  const dtHd=mk('div','tb-sec-hd');
+  dtHd.innerHTML='<span>🎬 Drehtage & Produktionsdaten</span>';
+  const addDtBtn=mk('button','tb-add-btn');addDtBtn.textContent='＋ Drehtag';
+  addDtBtn.onclick=tbNewDrehtag;
+  dtHd.appendChild(addDtBtn);
+  dtSec.appendChild(dtHd);
+
+  const dts=Object.values(sc.tonbericht.drehtage);
+  if(dts.length===0){
+    const empty=mk('div','tb-empty');empty.textContent='Noch keine Drehtage erfasst.';
+    dtSec.appendChild(empty);
+  } else {
+    dts.forEach(dt=>dtSec.appendChild(renderTbDrehtag(dt)));
+  }
+  wrap.appendChild(dtSec);
+
+  /* ─ Szenen ─ */
+  sc.scenes.forEach(scene=>{
+    const sd=tbGetSD(sc,scene.id);
+    wrap.appendChild(renderTbScene(scene,sc,sd));
+  });
+
+  wrap.scrollTop=scrollY;
+}
+
+function renderTbDrehtag(dt){
+  const card=mk('div','tb-dt-card');
+  /* Header */
+  const hd=mk('div','tb-dt-hd');
+  const numEl=mk('div','tb-dt-num');numEl.textContent='Drehtag '+(dt.drehtag||'–');
+  const dateIn=document.createElement('input');
+  dateIn.type='date';dateIn.value=dt.datum||'';
+  dateIn.className='tb-input tb-input-sm';dateIn.style.maxWidth='140px';
+  dateIn.onchange=()=>tbUpdateDrehtag(dt.id,'datum',dateIn.value);
+  const delBtn=mk('button','tb-del-btn');delBtn.textContent='✕';delBtn.title='Drehtag löschen';
+  delBtn.onclick=()=>tbDelDrehtag(dt.id);
+  hd.append(numEl,dateIn,delBtn);
+  card.appendChild(hd);
+  /* Body */
+  const body=mk('div','tb-dt-body');
+  const fields=[
+    ['drehtag','Tag #','z.B. 3'],['tonmeister','Tonmeister','Name …'],
+    ['telefon','Telefon','+ 49 …'],['email','E-Mail','name@email.de'],
+    ['mikrofon','Mikrofon / Boom','Typ / Modell …']
+  ];
+  fields.forEach(([field,label,ph])=>{
+    const row=mk('div','tb-dt-row');
+    const lbl=mk('label');lbl.textContent=label;
+    const inp=mk('input','tb-input');inp.placeholder=ph;inp.value=dt[field]||'';
+    inp.oninput=()=>tbUpdateDrehtag(dt.id,field,inp.value);
+    row.append(lbl,inp);body.appendChild(row);
+  });
+  /* Samplerate */
+  const srRow=mk('div','tb-dt-row');
+  const srLbl=mk('label');srLbl.textContent='Samplerate';
+  const srSel=mk('select','tb-select');
+  TB_SAMPLERATES.forEach(r=>{const o=document.createElement('option');o.value=r;o.textContent=r+' Hz';if(dt.samplerate===r)o.selected=true;srSel.appendChild(o);});
+  srSel.onchange=()=>tbUpdateDrehtag(dt.id,'samplerate',srSel.value);
+  srRow.append(srLbl,srSel);body.appendChild(srRow);
+  /* Bit-Depth */
+  const bdRow=mk('div','tb-dt-row');
+  const bdLbl=mk('label');bdLbl.textContent='Bit-Depth';
+  const bdSel=mk('select','tb-select');
+  TB_BITDEPTHS.forEach(b=>{const o=document.createElement('option');o.value=b;o.textContent=b+' Bit';if(dt.bitdepth===b)o.selected=true;bdSel.appendChild(o);});
+  bdSel.onchange=()=>tbUpdateDrehtag(dt.id,'bitdepth',bdSel.value);
+  bdRow.append(bdLbl,bdSel);body.appendChild(bdRow);
+
+  card.appendChild(body);
+  return card;
+}
+
+function renderTbScene(scene,sc,sd){
+  const drehtage=Object.values(sc.tonbericht.drehtage);
+  const section=mk('div','tb-scene');
+
+  /* Header */
+  const hd=mk('div','tb-scene-hd');
+  const title=mk('div','tb-scene-title');title.textContent=scene.title;title.title=scene.title;
+  const dtSel=mk('select','tb-select tb-select-sm');
+  const optNone=document.createElement('option');optNone.value='';optNone.textContent='– Drehtag –';dtSel.appendChild(optNone);
+  drehtage.forEach(dt=>{
+    const o=document.createElement('option');o.value=dt.id;
+    o.textContent='Tag '+(dt.drehtag||'–')+(dt.datum?' · '+dt.datum:'');
+    if(sd.drehtag_id===dt.id)o.selected=true;
+    dtSel.appendChild(o);
+  });
+  dtSel.onchange=()=>tbAssignDrehtag(scene.id,dtSel.value);
+  hd.append(title,dtSel);
+  section.appendChild(hd);
+
+  /* Einstellungen */
+  const eiList=mk('div','tb-ei-list');
+  sd.einstellungen.forEach(ei=>eiList.appendChild(renderTbEi(scene,ei,sc,sd)));
+  section.appendChild(eiList);
+
+  /* Einstellungs-Steuerung */
+  const ctrl=mk('div','tb-ei-ctrl');
+  const addBtn=mk('button','tb-pill-btn');addBtn.textContent='＋ Einstellung';addBtn.onclick=()=>tbAddEi(scene.id);
+  const remBtn=mk('button','tb-pill-btn destr');remBtn.textContent='− Einstellung';remBtn.onclick=()=>tbRemEi(scene.id);
+  ctrl.append(addBtn,remBtn);
+  section.appendChild(ctrl);
+  return section;
+}
+
+function renderTbEi(scene,ei,sc,sd){
+  const chars=tbSceneChars(scene,sc);
+  const card=mk('div','tb-ei-card');
+
+  /* Header */
+  const hd=mk('div','tb-ei-hd');
+  const letterWrap=mk('div');letterWrap.style.cssText='display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0';
+  const letter=mk('div','tb-ei-letter');letter.textContent=ei.letter;
+  const codeName=mk('div','tb-ei-codename');
+  codeName.textContent=tbBuildEiName(sc,scene.id,ei.letter);
+  letterWrap.append(letter,codeName);
+  const chips=mk('div','tb-char-chips');
+  chars.forEach(name=>{
+    const ch=sc.characters[name];
+    const active=ei.activeChars[name]!==false;
+    const isOff=scene.lines.some(l=>l.character===name&&l.isOff);
+    const chip=mk('button','tb-char-chip'+(active?'':' off'));
+    chip.textContent=(name.length>12?name.slice(0,11)+'…':name)+(isOff?' ·off':'');
+    if(ch&&active){chip.style.color=ch.color;chip.style.background=ch.color+'22';}
+    chip.title=(active?'Abwählen: ':'Auswählen: ')+name;
+    chip.onclick=()=>tbToggleChar(scene.id,ei.id,name);
+    chips.appendChild(chip);
+  });
+  hd.append(letterWrap,chips);
+  card.appendChild(hd);
+
+  /* Kanal-Chip-Zeile */
+  const TB_FIXED_MICS=['Boom 1','Boom 2','Plant'];
+  const kanalRow=mk('div','tb-kanal-row');
+  const kanalLbl=mk('span','tb-kanal-row-lbl');kanalLbl.textContent='🎙 Kanal';
+  kanalRow.appendChild(kanalLbl);
+  const kanalArr=Array.isArray(ei.kanal)?ei.kanal:[];
+  /* Fest-Mics */
+  TB_FIXED_MICS.forEach(mic=>{
+    const chip=mk('button','tb-kanal-chip'+(kanalArr.includes(mic)?' on':''));
+    chip.textContent=mic;
+    chip.onclick=()=>tbToggleKanal(scene.id,ei.id,mic);
+    kanalRow.appendChild(chip);
+  });
+  /* Szenen-Figuren */
+  chars.forEach(name=>{
+    const ch=sc.characters[name];
+    const active=kanalArr.includes(name);
+    const chip=mk('button','tb-kanal-chip'+(active?' on char-on':''));
+    chip.textContent=name.length>12?name.slice(0,11)+'…':name;
+    if(active&&ch){chip.style.color=ch.color;chip.style.borderColor=ch.color;chip.style.background=ch.color+'18';}
+    chip.onclick=()=>tbToggleKanal(scene.id,ei.id,name);
+    kanalRow.appendChild(chip);
+  });
+  card.appendChild(kanalRow);
+
+  /* Takes */
+  ei.takes.forEach(tk=>card.appendChild(renderTbTake(scene.id,ei.id,ei.letter,tk,sc,sd)));
+
+  /* + Take */
+  const addTake=mk('button','tb-add-take-btn');
+  addTake.innerHTML='＋ Take anlegen';
+  addTake.onclick=()=>tbAddTake(scene.id,ei.id);
+  card.appendChild(addTake);
+  return card;
+}
+
+function renderTbTake(sceneId,eiId,eiLetter,tk,sc,sd){
+  const card=mk('div','tb-take-card'+(tk.isBest?' best':''));
+  const eiList=sd?sd.einstellungen:[];
+  const eiIdx=eiList.findIndex(e=>e.id===eiId);
+  const tkIdx=eiList[eiIdx]?.takes.findIndex(t=>t.id===tk.id)??-1;
+  const tkTotal=eiList[eiIdx]?.takes.length??1;
+
+  /* ─ Take-Codename-Badge ─ */
+  const takeName=tbBuildTakeName(sc,sceneId,eiLetter,tk.nummer);
+  const nameRow=mk('div','tb-take-name-row');
+  const nameBadge=mk('div','tb-take-name-badge');nameBadge.textContent=takeName;
+  const copyBtn=mk('button','tb-copy-btn');copyBtn.textContent='⎘';copyBtn.title='Dateinamen kopieren';
+  copyBtn.onclick=()=>tbCopyName(takeName,copyBtn);
+  nameRow.append(nameBadge,copyBtn);
+  card.appendChild(nameRow);
+
+  /* ─ Header: Nr · Label · Sterne · Best · Löschen ─ */
+  const hd=mk('div','tb-take-hd');
+  const numBadge=mk('div','tb-take-num');
+  numBadge.textContent='Take '+tk.nummer;
+  /* Editierbares Label */
+  const labelIn=mk('input','tb-input tb-take-label-inp');
+  labelIn.placeholder='Bezeichnung …';labelIn.value=tk.label||'';
+  labelIn.title='Take benennen (optional)';
+  labelIn.oninput=()=>tbUpdTake(sceneId,eiId,tk.id,'label',labelIn.value);
+  /* Sterne */
+  const stars=mk('div','tb-stars');
+  for(let i=1;i<=5;i++){
+    const s=mk('button','tb-star'+(i<=tk.sterne?' on':''));s.textContent='★';
+    const v=i;s.onclick=()=>tbSetSterne(sceneId,eiId,tk.id,v);
+    stars.appendChild(s);
+  }
+  /* Best */
+  const bestBtn=mk('button','tb-best-btn'+(tk.isBest?' on':''));
+  bestBtn.innerHTML=tk.isBest?'🏆':'☆';
+  bestBtn.title=tk.isBest?'Best Take aufheben':'Als Best Take markieren';
+  bestBtn.onclick=()=>tbToggleBest(sceneId,eiId,tk.id);
+  /* Löschen */
+  const delBtn=mk('button','tb-del-btn');delBtn.textContent='✕';
+  delBtn.title='Take löschen';
+  delBtn.onclick=()=>{if(!tk.isBest||confirm('Best Take löschen?'))tbDelTake(sceneId,eiId,tk.id);};
+  hd.append(numBadge,labelIn,stars,bestBtn,delBtn);
+  card.appendChild(hd);
+
+  /* ─ Steuerung: Reihenfolge + Verschieben ─ */
+  const ctrlRow=mk('div','tb-take-ctrl-row');
+  /* ↑ ↓ innerhalb Einstellung */
+  const upBtn=mk('button','tb-sort-btn');upBtn.title='Take nach oben';upBtn.textContent='↑';
+  upBtn.disabled=tkIdx<=0;
+  upBtn.onclick=()=>tbReorderTake(sceneId,eiId,tk.id,-1);
+  const dnBtn=mk('button','tb-sort-btn');dnBtn.title='Take nach unten';dnBtn.textContent='↓';
+  dnBtn.disabled=tkIdx<0||tkIdx>=tkTotal-1;
+  dnBtn.onclick=()=>tbReorderTake(sceneId,eiId,tk.id,1);
+  ctrlRow.append(upBtn,dnBtn);
+  /* Verschieben in andere Einstellung (nur wenn >1 Einstellung) */
+  if(eiList.length>1){
+    const moveLbl=mk('span','tb-move-lbl');moveLbl.textContent='→';
+    const moveSel=mk('select','tb-select tb-move-sel');
+    const optSelf=document.createElement('option');optSelf.value='';optSelf.textContent='Verschieben nach …';
+    moveSel.appendChild(optSelf);
+    eiList.forEach(ei2=>{
+      if(ei2.id===eiId)return;
+      const o=document.createElement('option');
+      o.value=ei2.id;
+      o.textContent='Einstellung '+ei2.letter+(ei2.kanal?.length?' · '+(Array.isArray(ei2.kanal)?ei2.kanal.join(', '):ei2.kanal):'');
+      moveSel.appendChild(o);
+    });
+    moveSel.onchange=()=>{
+      if(!moveSel.value)return;
+      tbMoveTake(sceneId,eiId,tk.id,moveSel.value);
+    };
+    ctrlRow.append(moveLbl,moveSel);
+  }
+  card.appendChild(ctrlRow);
+
+  /* ─ Dialog-Kriterien ─ */
+  const dlgSec=mk('div','tb-criteria-section');
+  const dlgHd=mk('div','tb-criteria-hd');dlgHd.innerHTML='🎙&nbsp; Dialog-Kriterien';
+  dlgSec.appendChild(dlgHd);
+  /* Verständlichkeit */
+  const verstRow=mk('div','tb-verst-row');
+  const verstLbl=mk('span','tb-crit-label');verstLbl.textContent='Verständlichkeit';
+  verstRow.appendChild(verstLbl);
+  [['gut','✓ Gut'],['mittel','◑ Mittel'],['schlecht','✗ Schlecht']].forEach(([v,label])=>{
+    const btn=mk('button','tb-verst-btn'+(tk.dialog.verstaendlichkeit===v?' on-'+v:''));
+    btn.textContent=label;
+    btn.onclick=()=>{
+      tk.dialog.verstaendlichkeit=tk.dialog.verstaendlichkeit===v?null:v;
+      save();renderTonbericht();
+    };
+    verstRow.appendChild(btn);
+  });
+  dlgSec.appendChild(verstRow);
+  /* Boolean Kriterien */
+  const boolCrit=[
+    ['textabweichung','Textabweichung'],['rascheln','Rascheln'],
+    ['ueberlappen','Überlappen'],['versprecher','Versprecher'],
+    ['atemgeraeusch','Atemgeräusch'],['hallecho','Hall / Echo'],['rauschen','Rauschen']
+  ];
+  const boolWrap=mk('div','tb-bool-wrap');
+  boolCrit.forEach(([key,label])=>{
+    const active=!!tk.dialog[key];
+    const chip=mk('button','tb-crit-chip'+(active?' on':''));
+    chip.textContent=label;
+    chip.onclick=()=>{tk.dialog[key]=!tk.dialog[key];save();renderTonbericht();};
+    boolWrap.appendChild(chip);
+  });
+  dlgSec.appendChild(boolWrap);
+  card.appendChild(dlgSec);
+
+  /* ─ Störgeräusche ─ */
+  const noiseSec=mk('div','tb-criteria-section');
+  const noiseHd=mk('div','tb-criteria-hd');noiseHd.innerHTML='🔊&nbsp; Störgeräusche';
+  noiseSec.appendChild(noiseHd);
+  const allNoise=[...TB_DEFAULT_NOISE,...(sc.tonbericht.customNoise||[])];
+  const noiseWrap=mk('div','tb-bool-wrap');
+  allNoise.forEach(noise=>{
+    const active=tk.stoergeraeusche.includes(noise);
+    const chip=mk('button','tb-crit-chip'+(active?' on noise':''));
+    chip.textContent=noise;
+    chip.onclick=()=>tbToggleNoise(sceneId,eiId,tk.id,noise);
+    noiseWrap.appendChild(chip);
+  });
+  noiseSec.appendChild(noiseWrap);
+  /* Custom noise */
+  const customRow=mk('div','tb-custom-noise-row');
+  const customIn=mk('input','tb-input');
+  customIn.placeholder='Eigenes Störgeräusch …';customIn.style.flex='1';
+  const addCust=mk('button','tb-pill-btn');addCust.textContent='＋ Hinzufügen';
+  addCust.onclick=()=>{
+    const v=customIn.value.trim();if(!v)return;
+    tbAddCustomNoise(sceneId,eiId,tk.id,v);customIn.value='';
+  };
+  customIn.addEventListener('keydown',e=>{if(e.key==='Enter')addCust.click();});
+  customRow.append(customIn,addCust);
+  noiseSec.appendChild(customRow);
+  card.appendChild(noiseSec);
+
+  /* ─ Kommentar ─ */
+  const komRow=mk('div','tb-kom-row');
+  const komIn=mk('textarea','tb-input tb-kom');
+  komIn.placeholder='Kommentar zum Take …';komIn.value=tk.kommentar||'';komIn.rows=2;
+  komIn.oninput=()=>tbUpdTake(sceneId,eiId,tk.id,'kommentar',komIn.value);
+  komRow.appendChild(komIn);
+  card.appendChild(komRow);
+  return card;
+}
+
+/* ── PRINT / PDF ─────────────────────────────────────────────── */
+function tbPrint(){
+  const sc=as(),p=ap();if(!sc){showToast('Kein Drehbuch geladen','warn');return;}
+  tbInit(sc);
+  const proj=sc.tonbericht.projekt||{};
+  const date=new Date().toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'});
+  const DLG_LABELS={
+    textabweichung:'Textabw.',rascheln:'Rascheln',ueberlappen:'Überlap.',
+    versprecher:'Versprecher',atemgeraeusch:'Atem',hallecho:'Hall',rauschen:'Rauschen'
+  };
+  const kuerzel=tbGetKuerzel(sc);
+  const isSerien=proj.typ==='serie';
+  const epLabel=isSerien&&proj.episode?'Ep. '+String(proj.episode).padStart(2,'0'):'';
+
+  let html=`<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">
+<title>Tonbericht ${kuerzel}${epLabel?' '+epLabel:''}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:10.5px;
+  color:#111;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.page{max-width:210mm;margin:0 auto;padding:14mm 14mm 12mm}
+
+/* ── Dokument-Kopf ── */
+.doc-header{
+  display:flex;align-items:flex-end;justify-content:space-between;
+  border-bottom:2.5px solid #000;padding-bottom:8px;margin-bottom:14px;
+}
+.doc-title{font-size:22px;font-weight:900;letter-spacing:-.01em;line-height:1}
+.doc-meta{text-align:right;font-size:10px;color:#555;line-height:1.6}
+.doc-meta strong{color:#000;font-size:13px;letter-spacing:.04em;font-family:monospace}
+
+/* ── Drehtage ── */
+.dt-section{margin-bottom:16px}
+.dt-section-title{font-size:8px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  color:#777;margin-bottom:6px}
+.dt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+.dt-card{border:1px solid #bbb;border-radius:5px;overflow:hidden;break-inside:avoid}
+.dt-card-hd{background:#111;color:#fff;padding:5px 9px;font-size:11px;font-weight:700;
+  display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.dt-card-hd span{font-size:9px;font-weight:400;opacity:.75}
+.dt-card-body{padding:7px 9px;display:grid;grid-template-columns:1fr 1fr;gap:4px 10px}
+.dt-field{display:flex;flex-direction:column;gap:1px}
+.dt-field label{font-size:7.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#888}
+.dt-field p{font-size:10px;color:#111;word-break:break-word;min-height:14px;
+  border-bottom:0.5px solid #e0e0e0;padding-bottom:2px}
+.dt-field.full{grid-column:1/-1}
+.dt-contact{grid-column:1/-1;background:#f5f5f5;border-radius:3px;
+  padding:4px 6px;margin-top:3px;display:flex;gap:12px;flex-wrap:wrap}
+.dt-contact span{font-size:9px;color:#444}
+.dt-contact b{font-weight:600;color:#000}
+
+/* ── Szene ── */
+.scene-block{margin-bottom:16px;break-inside:avoid}
+.scene-hd{
+  display:flex;align-items:center;justify-content:space-between;
+  background:#111;color:#fff;padding:5px 10px;border-radius:4px 4px 0 0;
+}
+.scene-hd-title{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;
+  flex:1;word-break:break-word}
+.scene-hd-dt{font-size:8.5px;font-weight:400;opacity:.7;white-space:nowrap;margin-left:10px}
+
+/* ── Einstellung ── */
+.ei-block{border:1px solid #ccc;margin-bottom:7px;border-radius:0 0 4px 4px;overflow:hidden}
+.scene-block>.ei-block:first-of-type{border-top:0}
+.ei-hd{background:#e8e8e8;padding:5px 10px}
+.ei-hd-top{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.ei-letter{
+  background:#111;color:#fff;border-radius:3px;
+  padding:2px 8px;font-weight:900;font-size:13px;flex-shrink:0;
+}
+.ei-code{font-family:monospace;font-size:11px;color:#0044cc;font-weight:700;letter-spacing:.04em}
+.ei-kanal{font-size:9px;color:#555;background:#fff;border-radius:3px;
+  padding:1px 6px;border:1px solid #ccc;white-space:nowrap}
+.ei-roles{display:flex;flex-wrap:wrap;gap:4px;padding:2px 0}
+.ei-role{font-size:8.5px;font-weight:600;background:#fff;border:1px solid #bbb;
+  border-radius:10px;padding:1px 7px;color:#333}
+
+/* ── Takes-Tabelle ── */
+.tbl-hd{
+  display:grid;
+  grid-template-columns:minmax(120px,1.5fr) 60px minmax(80px,1fr) minmax(80px,1fr) minmax(120px,2fr);
+  gap:0;background:#d5d5d5;border-top:1px solid #ccc;
+}
+.tbl-hd>div{
+  font-size:7.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  color:#444;padding:4px 8px;border-right:0.5px solid #bbb;
+}
+.tbl-hd>div:last-child{border-right:none}
+.take-row{
+  display:grid;
+  grid-template-columns:minmax(120px,1.5fr) 60px minmax(80px,1fr) minmax(80px,1fr) minmax(120px,2fr);
+  gap:0;border-top:0.5px solid #e0e0e0;
+}
+.take-row:nth-child(even){background:#fafafa}
+.take-row>div{padding:5px 8px;border-right:0.5px solid #eee;word-break:break-word;
+  vertical-align:top;font-size:10px}
+.take-row>div:last-child{border-right:none}
+.take-code{font-family:monospace;font-weight:700;font-size:10.5px;color:#0044cc;letter-spacing:.03em}
+.take-label{font-size:8.5px;color:#888;font-style:italic;margin-top:2px}
+.take-best{display:inline-block;background:#fff3cd;border:1px solid #e0aa00;
+  border-radius:3px;font-size:8px;font-weight:700;padding:1px 5px;margin-top:2px;color:#7a5800}
+.stars{color:#d4870a;letter-spacing:0;font-size:12px;white-space:nowrap}
+.star-empty{color:#ccc}
+.tag-list{display:flex;flex-wrap:wrap;gap:3px}
+.tag{border-radius:3px;padding:2px 5px;font-size:8.5px;line-height:1.3;white-space:nowrap}
+.tag.dlg{background:#ffe4e4;color:#c00;border:0.5px solid #ffc0c0}
+.tag.noise{background:#fff3e0;color:#b05000;border:0.5px solid #ffd8a0}
+.tag.gut{background:#e4ffe4;color:#1a7a1a;border:0.5px solid #a0e0a0}
+.tag.mittel{background:#fffbe0;color:#7a6000;border:0.5px solid #e0d080}
+.tag.schlecht{background:#ffe4e4;color:#c00;border:0.5px solid #ffc0c0}
+.kommentar{font-size:10px;color:#333;line-height:1.4}
+.empty-row{padding:8px 10px;font-size:9px;color:#aaa;font-style:italic}
+
+@media print{
+  body{font-size:10px}
+  .page{padding:10mm 12mm}
+  .scene-block{break-inside:avoid}
+  .ei-block{break-inside:avoid}
+  #print-close-bar{display:none!important}
+}
+</style>
+<script>
+window.addEventListener('afterprint',function(){
+  document.getElementById('print-close-bar').style.display='flex';
+  document.getElementById('print-close-spacer').style.height='58px';
+});
+<\/script>
+</head><body>
+<div id="print-close-bar" style="
+  display:none;position:fixed;top:0;left:0;right:0;z-index:999;
+  background:rgba(28,28,30,.97);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  padding:10px 16px;align-items:center;justify-content:space-between;
+  border-bottom:0.5px solid rgba(255,255,255,.12);
+  box-shadow:0 2px 16px rgba(0,0,0,.4);
+">
+  <span style="color:rgba(235,235,245,.7);font-size:14px;font-weight:500">Tonbericht</span>
+  <button onclick="window.close()" style="
+    background:#ff453a;color:#fff;border:none;border-radius:8px;
+    padding:9px 20px;font-size:14px;font-weight:600;cursor:pointer;
+    font-family:-apple-system,sans-serif;min-height:38px;
+  ">✕ &nbsp;Schließen</button>
+</div>
+<div id="print-close-spacer" style="height:0"></div>
+<div class="page">
+
+<div class="doc-header">
+  <div class="doc-title">Tonbericht</div>
+  <div class="doc-meta">
+    <strong>${esc(kuerzel)}${epLabel?' &nbsp;·&nbsp; '+esc(epLabel):''}</strong><br>
+    ${esc(isSerien?'Serie':'Film')}&ensp;·&ensp;${esc(sc.name)}&ensp;·&ensp;${date}
+  </div>
+</div>`;
+
+  /* ── Drehtage ── */
+  const drehtage=Object.values(sc.tonbericht.drehtage);
+  if(drehtage.length>0){
+    html+='<div class="dt-section"><div class="dt-section-title">Drehtage &amp; Produktionsdaten</div><div class="dt-grid">';
+    drehtage.forEach(dt=>{
+      const hasContact=dt.telefon||dt.email;
+      html+=`<div class="dt-card">
+<div class="dt-card-hd">Drehtag ${esc(dt.drehtag||'–')}<span>${esc(dt.datum||'')}</span></div>
+<div class="dt-card-body">
+  <div class="dt-field full"><label>Tonmeister</label><p>${esc(dt.tonmeister||'–')}</p></div>
+  ${hasContact?`<div class="dt-contact">
+    ${dt.telefon?`<span>📞 <b>${esc(dt.telefon)}</b></span>`:''}
+    ${dt.email?`<span>✉ <b>${esc(dt.email)}</b></span>`:''}
+  </div>`:''}
+  <div class="dt-field"><label>Mikrofon / Boom</label><p>${esc(dt.mikrofon||'–')}</p></div>
+  <div class="dt-field"><label>Format</label><p>${dt.samplerate} Hz · ${dt.bitdepth} Bit</p></div>
+</div></div>`;
+    });
+    html+='</div></div>';
+  }
+
+  /* ── Szenen ── */
+  sc.scenes.forEach(scene=>{
+    const sd=sc.tonbericht.sceneData[scene.id];if(!sd)return;
+    const hasTakes=sd.einstellungen.some(e=>e.takes.length>0);if(!hasTakes)return;
+    const dt=sd.drehtag_id?sc.tonbericht.drehtage[sd.drehtag_id]:null;
+    const dtInfo=dt?`Tag ${esc(dt.drehtag||'–')}${dt.datum?' · '+esc(dt.datum):''}${dt.tonmeister?' · '+esc(dt.tonmeister):''}` :'';
+    html+=`<div class="scene-block">
+<div class="scene-hd">
+  <div class="scene-hd-title">${esc(scene.title)}</div>
+  ${dtInfo?`<div class="scene-hd-dt">${dtInfo}</div>`:''}
+</div>`;
+
+    sd.einstellungen.forEach(ei=>{
+      if(!ei.takes.length)return;
+      /* Aktive Figuren */
+      const activeRoles=Object.entries(ei.activeChars).filter(([,v])=>v).map(([k])=>k);
+      const kanalStr=Array.isArray(ei.kanal)&&ei.kanal.length?ei.kanal.join(' · '):'';
+      const roleChips=activeRoles.map(r=>`<span class="ei-role">${esc(r)}</span>`).join('');
+
+      html+=`<div class="ei-block">
+<div class="ei-hd">
+  <div class="ei-hd-top">
+    <span class="ei-letter">${ei.letter}</span>
+    <span class="ei-code">${esc(tbBuildEiName(sc,scene.id,ei.letter))}</span>
+    ${kanalStr?`<span class="ei-kanal">${esc(kanalStr)}</span>`:''}
+  </div>
+  ${roleChips?`<div class="ei-roles">${roleChips}</div>`:''}
+</div>
+<div class="tbl-hd">
+  <div>Dateiname</div>
+  <div>Bewertung</div>
+  <div>Dialog</div>
+  <div>Störgeräusche</div>
+  <div>Kommentar</div>
+</div>`;
+
+      ei.takes.forEach(tk=>{
+        /* Sterne */
+        const starsHtml=Array.from({length:5},(_,i)=>
+          `<span class="${i<tk.sterne?'':'star-empty'}">★</span>`).join('');
+        /* Dialog-Tags */
+        const dlgTags=[];
+        if(tk.dialog.verstaendlichkeit){
+          dlgTags.push(`<span class="tag ${tk.dialog.verstaendlichkeit}">${tk.dialog.verstaendlichkeit==='gut'?'✓ Gut':tk.dialog.verstaendlichkeit==='mittel'?'◑ Mittel':'✗ Schlecht'}</span>`);
+        }
+        Object.entries(tk.dialog).filter(([k,v])=>k!=='verstaendlichkeit'&&v).forEach(([k])=>{
+          dlgTags.push(`<span class="tag dlg">${DLG_LABELS[k]||k}</span>`);
+        });
+        /* Störgeräusche */
+        const noiseTags=tk.stoergeraeusche.map(n=>`<span class="tag noise">${esc(n)}</span>`);
+        const tkName=tbBuildTakeName(sc,scene.id,ei.letter,tk.nummer);
+        html+=`<div class="take-row">
+<div><div class="take-code">${esc(tkName)}</div>${tk.isBest?'<div class="take-best">★ BEST TAKE</div>':''}${tk.label?'<div class="take-label">'+esc(tk.label)+'</div>':''}</div>
+<div><span class="stars">${starsHtml}</span></div>
+<div><div class="tag-list">${dlgTags.join('')||'<span style="color:#bbb;font-size:9px">–</span>'}</div></div>
+<div><div class="tag-list">${noiseTags.join('')||'<span style="color:#bbb;font-size:9px">–</span>'}</div></div>
+<div class="kommentar">${esc(tk.kommentar)||''}</div>
+</div>`;
+      });
+      html+='</div>';
+    });
+    html+='</div>';
+  });
+
+  html+='</div></body></html>';
+  const w=window.open('','_blank','width=1050,height=750');
+  if(!w){showToast('Popup blockiert – bitte Popups erlauben','warn');return;}
+  w.document.write(html);w.document.close();
+  setTimeout(()=>{
+    w.print();
+    /* iOS: afterprint oft unzuverlässig → close-bar nach kurzer Verzögerung anzeigen */
+    if(/iphone|ipad|ipod/i.test(navigator.userAgent)){
+      setTimeout(()=>{
+        try{
+          const bar=w.document.getElementById('print-close-bar');
+          const spacer=w.document.getElementById('print-close-spacer');
+          if(bar){bar.style.display='flex';if(spacer)spacer.style.height='58px';}
+        }catch(e){}
+      },600);
+    }
+  },500);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   NAVIGATION
+═══════════════════════════════════════════════════════════════ */
+function setMTab(tab){
+  S.mtab=tab;
+  document.querySelectorAll('.tabitem').forEach(t=>t.classList.toggle('on',t.dataset.tab===tab));
+  const pv=g('proj-view'),ts=g('tab-s'),tn=g('tab-n'),tt=g('tab-t');
+  pv.classList.remove('on');ts.classList.remove('on');tn.classList.remove('on');if(tt)tt.classList.remove('on');
+  if(tab==='p'){pv.classList.add('on');renderProjMobile();}
+  else if(tab==='s'){ts.classList.add('on');S.tab='s';}
+  else if(tab==='n'){tn.classList.add('on');S.tab='n';renderNtTable();}
+  else if(tab==='t'){if(tt)tt.classList.add('on');S.tab='t';renderTonbericht();}
+}
+function setTab(tab){
+  S.tab=tab;
+  const ts=g('tab-s'),tn=g('tab-n'),tt=g('tab-t');
+  ts.classList.toggle('on',tab==='s');
+  tn.classList.toggle('on',tab==='n');
+  if(tt)tt.classList.toggle('on',tab==='t');
+  document.querySelectorAll('.seg-btn').forEach((b,i)=>b.classList.toggle('on',i===(tab==='s'?0:tab==='n'?1:2)));
+  if(tab==='n')renderNtTable();
+  if(tab==='t')renderTonbericht();
+}
+function setNTab(t){
+  S.ntab=t;
+  g('nst-d').classList.toggle('on',t==='d');
+  g('nst-g').classList.toggle('on',t==='g');
+  renderNtTable();
+}
+function toggleSidebar(){
+  const sb=g('sidebar'),bd=g('sidebar-backdrop');
+  if(isMobile()){
+    const open=sb.classList.toggle('mobile-open');
+    bd.classList.toggle('on',open);
+  }
+}
+function closeSidebar(){
+  g('sidebar').classList.remove('mobile-open');
+  g('sidebar-backdrop').classList.remove('on');
+}
+function resetModeUI(){
+  g('mbd').className='mode-pill';g('mbg').className='mode-pill';g('mbw').className='mode-pill';
+  const mb=g('mbar');mb.textContent='';mb.className='';
+  updateFAB();
+}
+function setMode(m){
+  S.mode=S.mode===m?null:m;
+  g('mbd').className='mode-pill'+(S.mode==='d'?' on d':'');
+  g('mbg').className='mode-pill'+(S.mode==='g'?' on g':'');
+  g('mbw').className='mode-pill'+(S.mode==='w'?' on w':'');
+  const mb=g('mbar');
+  if(S.mode==='d'){mb.textContent='🎙 Dialog-Marker aktiv – Dialogzeile tippen → Nurtonliste';mb.className='d';}
+  else if(S.mode==='g'){mb.textContent='🔊 Geräusch-Marker aktiv – Aktionszeile tippen → Geräusch erfassen';mb.className='g';}
+  else if(S.mode==='w'){mb.textContent='✏ Wort-Marker aktiv – einzelne Wörter antippen, die noch nicht sauber aufgenommen sind';mb.className='w';}
+  else{mb.textContent='';mb.className='';}
+  updateFAB();
+  renderScript();
+}
+function togRec(lid){
+  const sc=as();if(!sc)return;
+  if(sc.recorded[lid])delete sc.recorded[lid];else sc.recorded[lid]=true;
+  save();renderScript();renderSceneNav();renderHeader();
+}
+
+/* ── WORT-MARKER ─────────────────────────────────────────────── */
+function buildWordSpans(container,text,lineId,sc,q){
+  if(!sc.wordMarkers)sc.wordMarkers={};
+  /* Tokenize: Wörter + Leerzeichen getrennt erhalten */
+  const tokens=text.split(/(\s+)/);
+  let wi=0;
+  tokens.forEach(tok=>{
+    if(/^\s+$/.test(tok)){
+      container.appendChild(document.createTextNode(tok));
+      return;
+    }
+    const key=lineId+'_'+wi;
+    const marked=!!sc.wordMarkers[key];
+    const span=document.createElement('span');
+    span.className='wm'+(marked?' on':'')+(S.mode==='w'?' clk':'');
+    span.dataset.wkey=key;
+    /* Suchbegriff-Highlight innerhalb des Worts */
+    if(q&&tok.toLowerCase().includes(q.toLowerCase())){
+      span.innerHTML=hilite(esc(tok),q);
+    } else {
+      span.textContent=tok;
+    }
+    container.appendChild(span);
+    wi++;
+  });
+}
+function toggleWordMarker(key){
+  const sc=as();if(!sc)return;
+  if(!sc.wordMarkers)sc.wordMarkers={};
+  if(sc.wordMarkers[key])delete sc.wordMarkers[key];
+  else sc.wordMarkers[key]=true;
+  save();renderScript();
+}
+function clearLineWordMarkers(lineId){
+  const sc=as();if(!sc||!sc.wordMarkers)return;
+  Object.keys(sc.wordMarkers).filter(k=>k.startsWith(lineId+'_')).forEach(k=>delete sc.wordMarkers[k]);
+  save();renderScript();
+}
+function lineHasWordMarkers(lineId){
+  const sc=as();if(!sc||!sc.wordMarkers)return false;
+  return Object.keys(sc.wordMarkers).some(k=>k.startsWith(lineId+'_'));
+}
+function doSearch(q){S.ui.q=q;renderScript();}
+function toggleChips(){
+  S.ui.chipsCollapsed=!S.ui.chipsCollapsed;
+  renderChips();
+}
+function doReset(){
+  const sc=as();if(!sc||!confirm('Alle Aufnahme-Markierungen zurücksetzen?'))return;
+  sc.recorded={};save();renderAll();
+}
+function openMod(){
+  const sc=as(),wrap=g('mchars');
+  wrap.innerHTML='';
+  if(!sc){
+    wrap.innerHTML='<p style="color:var(--label3);font-size:15px;padding:8px 0">Kein Drehbuch geladen.</p>';
+    g('movl').classList.add('on');return;
+  }
+  /* Sichtbare zuerst, dann ausgeblendete */
+  const entries=[...Object.entries(sc.characters)]
+    .sort((a,b)=>{ if(!!a[1].hidden!==!!b[1].hidden)return a[1].hidden?1:-1; return a[0].localeCompare(b[0]); });
+
+  if(entries.some(([,ch])=>ch.hidden)){
+    const hint=mk('p');hint.style.cssText='font-size:12px;color:var(--label3);margin-bottom:12px';
+    hint.textContent='Ausgeblendete Rollen erscheinen nicht in der Filterleiste.';
+    wrap.appendChild(hint);
+  }
+
+  entries.forEach(([name,ch])=>{
+    const row=mk('div','crow');
+    if(ch.hidden)row.style.opacity='.45';
+
+    /* Auge-Schalter: ein-/ausblenden */
+    const eye=mk('button');
+    eye.style.cssText='background:none;border:1px solid var(--sep);border-radius:6px;cursor:pointer;font-size:15px;padding:2px 6px;min-height:auto;flex-shrink:0';
+    eye.textContent=ch.hidden?'🙈':'👁';
+    eye.title=ch.hidden?'Wieder einblenden':'In Filterleiste ausblenden';
+    eye.onclick=()=>{
+      ch.hidden=!ch.hidden;
+      if(S.ui.fc===name&&ch.hidden)S.ui.fc=null;
+      save();renderScript();renderChips();
+      openMod(); /* Modal neu rendern */
+    };
+
+    const lbl=mk('span');lbl.textContent=name;
+    lbl.style.color=ch.hidden?'var(--label3)':ch.color;
+    if(ch.hidden)lbl.style.textDecoration='line-through';
+
+    const inp=document.createElement('input');inp.type='color';inp.value=ch.color;
+    if(ch.hidden)inp.disabled=true;
+    inp.oninput=e=>{
+      const c=e.target.value;
+      ch.color=c;lbl.style.color=c;
+      syncCharColor(name,c); /* Projektweite Synchronisation */
+    };
+    inp.onchange=()=>{save();renderScript();renderChips();renderTree();};
+
+    row.append(eye,lbl,inp);wrap.appendChild(row);
+  });
+  g('movl').classList.add('on');
+}
+function closeMod(){g('movl').classList.remove('on');}
+
+/* Farbsynchronisation: ändert die Farbe einer Rolle in ALLEN Skripten des Projekts */
+function syncCharColor(name,color){
+  const proj=ap();if(!proj)return;
+  Object.values(proj.scripts).forEach(s=>{
+    if(s.characters[name])s.characters[name].color=color;
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   BACKUP — Vollständige Projektdaten sichern und laden
+   ---------------------------------------------------------------
+   Export: alle Projekte → .json  (Szenen, Charaktere, Nurtöne,
+           Aufnahme-Markierungen, Notizen — alles außer der PDF)
+   Import: .json → Zusammenführen mit vorhandenen Daten
+           Gleiche Projekt-ID → wird überschrieben
+           Neue Projekt-ID   → wird hinzugefügt
+═══════════════════════════════════════════════════════════════ */
+function exportBackup(){
+  const projCount=Object.keys(S.projects).length;
+  if(!projCount){showToast('Keine Projekte zum Sichern.','warn');return;}
+  const date=new Date().toISOString().slice(0,10).replace(/-/g,'');
+  const suggested=`cinescript_backup_${date}`;
+  const name=prompt('Dateiname (ohne .json):',suggested);
+  if(!name?.trim())return; /* Abbrechen */
+  const safeName=name.trim().replace(/[/\\:*?"<>|]/g,'_'); /* ungültige Zeichen ersetzen */
+  const payload={
+    _app:'CineScript',_v:'cs_v4',
+    _date:new Date().toISOString(),
+    _projects:projCount,
+    projects:S.projects
+  };
+  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=safeName+'.json';
+  a.click();URL.revokeObjectURL(a.href);
+  showToast(`✓ Gesichert als „${safeName}.json"`,'ok');
+}
+
+async function importBackup(e){
+  const file=e.target.files[0];if(!file)return;
+  try{
+    const text=await file.text();
+    const data=JSON.parse(text);
+
+    /* Validierung */
+    if(!data.projects||typeof data.projects!=='object')
+      throw new Error('Kein gültiges CineScript-Backup.');
+    if(data._app&&data._app!=='CineScript')
+      throw new Error('Datei wurde nicht von CineScript erstellt.');
+
+    const incoming=Object.values(data.projects);
+    if(!incoming.length){showToast('Backup enthält keine Projekte.','warn');e.target.value='';return;}
+
+    /* Konflikte prüfen */
+    const existing=Object.keys(S.projects);
+    const overwrite=incoming.filter(p=>existing.includes(p.id));
+    const fresh=incoming.filter(p=>!existing.includes(p.id));
+
+    let msg=`${incoming.length} Projekt${incoming.length!==1?'e':''} gefunden:\n`;
+    if(fresh.length)   msg+=`  + ${fresh.length} neu\n`;
+    if(overwrite.length)msg+=`  ↺ ${overwrite.length} werden überschrieben\n`;
+    msg+='\nImportieren?';
+    if(!confirm(msg)){e.target.value='';return;}
+
+    /* Zusammenführen */
+    Object.assign(S.projects,data.projects);
+
+    /* Aktives Projekt setzen falls nötig */
+    if(!S.pid||!S.projects[S.pid]){
+      S.pid=Object.keys(S.projects)[0]||null;S.sid=null;
+    }
+    save();renderAll();
+    showToast(`✓ ${incoming.length} Projekt${incoming.length!==1?'e':''} importiert`,'ok');
+  }catch(err){
+    showToast('Import fehlgeschlagen: '+(err.message||err),'err');
+  }
+  e.target.value='';
+}
+const csvF=v=>'"'+String(v||'').replace(/"/g,'""')+'"';
+function expStatus(){
+  const sc=as(),p=ap();if(!sc){alert('Kein Drehbuch.');return;}
+  let out=`AUFNAHMESTATUS — ${p?.name||''} · ${sc.name}\n${'═'.repeat(52)}\n\n`;
+  let tot=0,rec=0;
+  sc.scenes.forEach(s=>{
+    const d=s.lines.filter(l=>l.type==='dialogue');
+    const r=d.filter(l=>sc.recorded[l.id]).length;
+    tot+=d.length;rec+=r;
+    out+=`${s.title}\n  ${r}/${d.length} (${d.length?Math.round(r/d.length*100):0}%)\n`;
+    if(sc.notes[s.id]?.trim())out+=`  📝 ${sc.notes[s.id].trim()}\n`;
+    d.filter(l=>!sc.recorded[l.id]).slice(0,4).forEach(l=>{out+=`  ○ [${l.character}] ${l.text.slice(0,60)}\n`;});
+    out+='\n';
+  });
+  out+=`${'─'.repeat(52)}\nGESAMT: ${rec}/${tot} (${tot?Math.round(rec/tot*100):0}%)\n`;
+  dl(out,'aufnahmestatus.txt');
+}
+function expNurtons(typ){
+  const sc=as();if(!sc)return;
+  const nn=(sc.nurtons||[]).filter(n=>n.type===typ);
+  let csv=typ==='dialog'?'Nr;Szene;Rolle;Dialog;Typ;Status;Notiz\n':'Nr;Szene;Geräusch;Referenz;Status;Notiz\n';
+  nn.forEach((n,i)=>{
+    if(typ==='dialog')csv+=`${i+1};${csvF(n.sceneTitle)};${csvF(n.character)};${csvF(n.text)};${csvF((n.auto?'AUTO':'MARKER')+(n.isOff?' OFF':''))};${csvF(n.status)};${csvF(n.note)}\n`;
+    else csv+=`${i+1};${csvF(n.sceneTitle)};${csvF(n.text)};${csvF(n.refText)};${csvF(n.status)};${csvF(n.note)}\n`;
+  });
+  dl(csv,`nurtöne_${typ}.csv`);
+}
+function dl(text,name){
+  const blob=new Blob([text],{type:'text/plain;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();URL.revokeObjectURL(a.href);
+}
+async function wake(){if('wakeLock'in navigator)try{await navigator.wakeLock.request('screen');}catch{}}
+
+/* UTILS */
+const g=id=>document.getElementById(id);
+const mk=(tag,cls='')=>{const e=document.createElement(tag);if(cls)e.className=cls;return e;};
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const hilite=(h,q)=>h.replace(new RegExp('('+q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi'),'<span class="hl">$1</span>');
+function loading(on,m=''){g('loading').classList.toggle('on',on);if(m)setMsg(m);}
+function setMsg(m){const el=g('load-msg');if(el)el.textContent=m;}
+let _tt=null;
+function showToast(msg,type='ok'){
+  const t=g('toast');t.textContent=msg;t.className='on '+type;
+  clearTimeout(_tt);_tt=setTimeout(()=>{t.className='';},5500);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   FAB — Floating Action Button (mobil)
+   Tippt man ihn an, wechselt er zwischen den drei Modi:
+   Normal (✱) → Dialog-Marker (🎙) → Geräusch-Marker (🔊) → Normal
+═══════════════════════════════════════════════════════════════ */
+const FAB_CYCLE=[null,'d','g','w'];
+function cycleFAB(){
+  const i=FAB_CYCLE.indexOf(S.mode);
+  setMode(FAB_CYCLE[(i+1)%FAB_CYCLE.length]);
+}
+function updateFAB(){
+  const btn=g('fab-btn'),lbl=g('fab-label');
+  if(!btn)return;
+  if(S.mode==='d'){
+    btn.textContent='🎙';btn.className='d';
+    lbl.textContent='Dialog-Marker aktiv';lbl.classList.add('on');
+  }else if(S.mode==='g'){
+    btn.textContent='🔊';btn.className='g';
+    lbl.textContent='Geräusch-Marker aktiv';lbl.classList.add('on');
+  }else if(S.mode==='w'){
+    btn.textContent='✏';btn.className='w';
+    lbl.textContent='Wort-Marker aktiv';lbl.classList.add('on');
+  }else{
+    btn.textContent='✱';btn.className='';
+    lbl.textContent='';lbl.classList.remove('on');
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ACTION SHEET — erscheint nach Long Press auf Dialogzeile
+   Ersetzt Tastatur-Shortcuts auf mobilen Geräten vollständig.
+═══════════════════════════════════════════════════════════════ */
+function showAS(scene,line){
+  const sc=as();if(!sc)return;
+  const isRec=!!sc.recorded[line.id];
+  const isNt=(sc.nurtons||[]).some(n=>n.lineId===line.id);
+  /* Haptisches Feedback (iOS/Android) */
+  if(navigator.vibrate)navigator.vibrate(38);
+  /* Titel = Anfang des Dialogtexts */
+  g('as-title').textContent=line.text.length>55?line.text.slice(0,52)+'…':line.text;
+  const items=[
+    {
+      label:isRec?'✕  Aufnahme-Markierung entfernen':'✓  Als aufgenommen markieren',
+      color:isRec?'var(--red)':'var(--green)',
+      action:()=>{togRec(line.id);hideAS();}
+    },
+    {
+      label:isNt?'🎙  Von Nurton-Liste entfernen':'🎙  Zu Dialog-Nurtönen hinzufügen',
+      color:'var(--blue)',
+      action:()=>{addNtDialog(scene,line);hideAS();}
+    },
+    {
+      label:'🔊  Geräusch erfassen',
+      color:'var(--green)',
+      action:()=>{hideAS();setTimeout(()=>addNtGerausch(scene,line),340);}
+    },
+    ...(lineHasWordMarkers(line.id)?[{
+      label:'✏  Alle Wort-Marker dieser Zeile löschen',
+      color:'var(--orange)',
+      action:()=>{clearLineWordMarkers(line.id);hideAS();}
+    }]:[])
+  ];
+  const cont=g('as-items');cont.innerHTML='';
+  items.forEach(item=>{
+    const btn=mk('button','as-item');
+    btn.textContent=item.label;btn.style.color=item.color;
+    btn.onclick=item.action;cont.appendChild(btn);
+  });
+  g('as-overlay').classList.add('on');
+  /* Double rAF: sicherstellt dass display:flex gesetzt ist bevor Transition startet */
+  requestAnimationFrame(()=>requestAnimationFrame(()=>g('as-sheet').classList.add('open')));
+}
+function hideAS(){
+  g('as-sheet').classList.remove('open');
+  setTimeout(()=>g('as-overlay').classList.remove('on'),340);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   LONG PRESS — Touch-Helper
+   Erkennt langen Tastendruck (480ms) mit Abbruch bei Bewegung.
+═══════════════════════════════════════════════════════════════ */
+function attachLP(el,cb){
+  let t=null,moved=false;
+  el.addEventListener('touchstart',()=>{
+    moved=false;
+    t=setTimeout(()=>{if(!moved)cb();},480);
+  },{passive:true});
+  el.addEventListener('touchmove',()=>{moved=true;clearTimeout(t);},{passive:true});
+  el.addEventListener('touchend',()=>clearTimeout(t));
+  el.addEventListener('touchcancel',()=>clearTimeout(t));
+}
+
+/* KEYBOARD (desktop) */
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='TEXTAREA'||e.target.tagName==='INPUT')return;
+  if(e.key==='f'||e.key==='F'){g('srch').focus();return;}
+  if(e.key==='Escape'){
+    g('srch').value='';S.ui.q='';
+    if(S.mode){S.mode=null;resetModeUI();}
+    renderScript();closeSidebar();return;
+  }
+  if(e.key==='1')setMode('d');
+  if(e.key==='2')setMode('g');
+  if(e.key==='3')setMode('w');
+});
+
+/* Close sidebar when clicking content on mobile */
+g('main').addEventListener('click',()=>{if(isMobile())closeSidebar();},{passive:true});
+
+/* ═══════════════════════════════════════════════════════════════
+   PWA SETUP — Service Worker + Install-Banner
+═══════════════════════════════════════════════════════════════ */
+(function pwaSetup(){
+
+  /* ── Service Worker registrieren ───────────────────────────── */
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('./sw.js', {scope:'./'})
+      .then(reg=>{
+        /* Neue Version verfügbar → Nutzer informieren */
+        reg.addEventListener('updatefound',()=>{
+          const nw=reg.installing;
+          nw.addEventListener('statechange',()=>{
+            if(nw.state==='installed'&&navigator.serviceWorker.controller){
+              showToast('Update verfügbar – App neu laden für die neue Version','ok');
+            }
+          });
+        });
+      })
+      .catch(()=>{
+        /* Fehler nur bei file:// — App funktioniert trotzdem online */
+      });
+  }
+
+  /* ── iOS Install-Banner ─────────────────────────────────────── */
+  const isInstalled=window.navigator.standalone===true
+    ||window.matchMedia('(display-mode: standalone)').matches;
+  const dismissed=localStorage.getItem('cs_install_dismissed');
+
+  if(!isInstalled&&!dismissed&&/iphone|ipad|ipod/i.test(navigator.userAgent)){
+    setTimeout(()=>{
+      const banner=document.createElement('div');
+      banner.id='install-banner';
+      banner.style.cssText=`
+        position:fixed;bottom:calc(var(--tb) + 12px + var(--sb));left:12px;right:12px;
+        background:#1c1c1e;border-radius:16px;padding:14px 16px;
+        box-shadow:0 8px 32px rgba(0,0,0,.6);z-index:300;
+        display:flex;align-items:flex-start;gap:12px;
+        border:0.5px solid rgba(255,255,255,.1);
+        animation:slideUp .4s cubic-bezier(.32,0,.22,1);
+      `;
+      banner.innerHTML=`
+        <div style="font-size:32px;flex-shrink:0">🎬</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:3px">CineScript installieren</div>
+          <div style="font-size:12px;color:rgba(235,235,245,.55);line-height:1.5">
+            Tippe <strong style="color:rgba(235,235,245,.8)">Teilen ↑</strong> und dann
+            <strong style="color:rgba(235,235,245,.8)">„Zum Home-Bildschirm"</strong>
+            — danach läuft die App offline.
+          </div>
+        </div>
+        <button id="install-close" style="background:none;border:none;color:rgba(235,235,245,.4);font-size:20px;cursor:pointer;padding:0;line-height:1;flex-shrink:0">✕</button>
+      `;
+      document.body.appendChild(banner);
+      document.getElementById('install-close').onclick=()=>{
+        banner.remove();localStorage.setItem('cs_install_dismissed','1');
+      };
+      setTimeout(()=>{if(banner.parentNode)banner.remove();},14000);
+    },1800);
+  }
+})();
+
+/* INIT */
+load();renderAll();wake();
+</script>
+</body>
+</html>
