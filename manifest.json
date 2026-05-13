@@ -1,0 +1,33 @@
+{
+  "name": "CineScript · Set Manager",
+  "short_name": "CineScript",
+  "description": "Drehbuch-Manager für den Filmset – Aufnahmen tracken, Nurtöne & Tonbericht",
+  "start_url": "./cinescript_tonbericht.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#000000",
+  "background_color": "#000000",
+  "lang": "de",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icon-180.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

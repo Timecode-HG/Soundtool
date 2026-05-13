@@ -1,0 +1,75 @@
+╔══════════════════════════════════════════════════════════════╗
+║              CineScript · Offline-Installation               ║
+╚══════════════════════════════════════════════════════════════╝
+
+EINMALIGE EINRICHTUNG (ca. 2 Minuten)
+──────────────────────────────────────
+
+1. DIESEN ORDNER auf dem Mac belassen
+   Alle Dateien müssen zusammen im selben Ordner sein:
+   • cinescript_tonbericht.html
+   • sw.js
+   • manifest.json
+   • icon-192.png / icon-512.png / icon-180.png
+   • CineScript starten.command
+
+2. STARTER-SKRIPT ausführbar machen (einmalig, Terminal):
+   chmod +x "CineScript starten.command"
+   (oder Rechtsklick → „Öffnen" → „Öffnen" bestätigen)
+
+3. „CINESCRIPT STARTEN.COMMAND" doppelklicken
+   → Terminal öffnet sich
+   → Server startet auf Port 8765
+   → Safari auf dem Mac öffnet sich automatisch
+
+4. AUF IPHONE/IPAD: Im Terminal angezeigte URL in Safari eingeben
+   Beispiel: http://192.168.1.42:8765/cinescript_tonbericht.html
+   → Mac und iOS-Gerät müssen im gleichen WLAN sein
+
+5. ALS APP INSTALLIEREN:
+   → Teilen-Symbol (□↑) antippen
+   → „Zum Home-Bildschirm" wählen
+   → „Hinzufügen" bestätigen
+   ✅ App ist jetzt auf dem Home-Bildschirm installiert
+
+6. SERVER STOPPEN: Terminal → Ctrl + C
+   Die App läuft danach vollständig OFFLINE auf dem Gerät.
+
+──────────────────────────────────────
+TÄGLICHE NUTZUNG AM SET
+──────────────────────────────────────
+
+Wenn die App einmal installiert ist:
+→ Direkt vom Home-Bildschirm starten – kein Server nötig
+→ Funktioniert ohne WLAN, ohne Mac, ohne Internet
+
+Nur wenn neue Drehbücher (PDF) importiert werden sollen:
+→ Server kurz starten (Schritt 3) → PDF importieren → fertig
+
+──────────────────────────────────────
+DATENSICHERUNG
+──────────────────────────────────────
+
+Alle Daten (Drehbücher, Nurtöne, Tonberichte) sind im
+Safari-LocalStorage gespeichert – nur auf diesem Gerät.
+
+Regelmäßig sichern: App → Datensicherung → „Alles sichern"
+→ JSON-Datei per AirDrop aufs Mac schicken
+
+──────────────────────────────────────
+HÄUFIGE FRAGEN
+──────────────────────────────────────
+
+Q: „Der Server lässt sich nicht starten"
+A: Terminal öffnen, eingeben:
+   chmod +x /pfad/zu/"CineScript starten.command"
+
+Q: „iOS-Gerät findet den Server nicht"
+A: Mac und iOS im gleichen WLAN? Firewall prüfen:
+   Systemeinstellungen → Netzwerk → Firewall → Port 8765 erlauben
+
+Q: „App zeigt nach Update alte Version"
+A: Safari → Einstellungen → Verlauf löschen, dann neu öffnen
+
+──────────────────────────────────────
+Version: CineScript PWA v3 · Service Worker: cs-v3
