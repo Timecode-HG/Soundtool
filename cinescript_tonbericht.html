@@ -105,6 +105,39 @@ body{
 .crow:last-child{border-bottom:none}
 .crow span{font-size:15px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .crow input[type=color]{width:38px;height:34px;border:none;border-radius:var(--r8);cursor:pointer;padding:2px;background:none;-webkit-appearance:none}
+/* ── Rollen-Merge-Panel ─────────────────────────────────────── */
+.merge-section{margin-bottom:18px;border-bottom:1px solid var(--sep);padding-bottom:16px}
+.merge-section h4{font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--label3);margin-bottom:10px;display:flex;align-items:center;gap:7px}
+.merge-group{
+  background:var(--fill2);border-radius:var(--r10);padding:10px 12px;margin-bottom:8px;
+  border:1px solid var(--sep);
+}
+.merge-group-names{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px}
+.merge-name-badge{
+  border-radius:var(--r20);padding:3px 10px;font-size:12px;font-weight:600;cursor:pointer;
+  border:1.5px solid var(--sep);background:var(--fill3);color:var(--label2);transition:.15s;
+  display:flex;align-items:center;gap:4px;
+}
+.merge-name-badge.canonical{background:rgba(10,132,255,.15);color:var(--blue);border-color:var(--blue)}
+.merge-name-badge .crown{font-size:10px}
+.merge-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.merge-confirm-btn{
+  background:var(--blue);color:#fff;border:none;border-radius:var(--r8);
+  font-size:13px;font-weight:600;padding:7px 16px;cursor:pointer;min-height:34px;
+  font-family:var(--font);transition:opacity .15s;white-space:nowrap;
+}
+.merge-confirm-btn:active{opacity:.75}
+.merge-confirm-btn.destr{background:var(--red)}
+.merge-manual{
+  margin-top:6px;background:var(--fill2);border-radius:var(--r10);
+  padding:10px 12px;border:1px solid var(--sep);
+}
+.merge-manual select{
+  background:var(--fill3);border:none;border-radius:var(--r8);color:var(--label);
+  padding:6px 10px;font-size:13px;font-family:var(--font);outline:none;flex:1;min-width:0;
+}
+.merge-hint{font-size:11px;color:var(--label3);margin-top:5px}
 
 /* ── APP SHELL ──────────────────────────────────────────────── */
 /* position:fixed + --dvh ist das zuverlässigste Muster für
@@ -1066,8 +1099,8 @@ body{
 <!-- MODAL: COLOR PICKER -->
 <div id="movl" onclick="if(event.target===this)closeMod()">
   <div id="modal">
-    <h3>🎨 Charakter-Farben</h3>
-    <div id="mchars"></div>
+    <h3>🎨 Rollen verwalten</h3>
+    <div id="mchars" style="overflow-y:auto;max-height:calc(70vh - 120px)"></div>
     <div style="margin-top:18px;display:flex;gap:10px">
       <button class="bigbtn" style="flex:1;padding:12px" onclick="closeMod()">Fertig</button>
     </div>
@@ -3159,6 +3192,78 @@ function doReset(){
   const sc=as();if(!sc||!confirm('Alle Aufnahme-Markierungen zurücksetzen?'))return;
   sc.recorded={};save();renderAll();
 }
+/* ═══════════════════════════════════════════════════════════════
+   ROLLEN ZUSAMMENFÜHREN
+═══════════════════════════════════════════════════════════════ */
+
+/* Basis-Name: Klammern, Zusätze und Sonderzeichen am Ende entfernen */
+function charBaseName(name){
+  return name
+    .replace(/\s*\(.*?\)\s*$/, '')   /* ANNA (V.O.) → ANNA      */
+    .replace(/\s*\[.*?\]\s*$/, '')   /* ANNA [NOTE] → ANNA      */
+    .replace(/[\s:\.\,\-–—\/\\!'?]+$/, '') /* trailing specials  */
+    .trim().toUpperCase();
+}
+
+/* Findet Gruppen mit gleichem Basis-Namen → Merge-Kandidaten */
+function findMergeCandidates(sc){
+  const groups={};
+  Object.keys(sc.characters).forEach(name=>{
+    const base=charBaseName(name);
+    if(!base)return;
+    if(!groups[base])groups[base]=[];
+    groups[base].push(name);
+  });
+  return Object.values(groups)
+    .filter(m=>m.length>1)
+    .map(members=>{
+      /* Kanonischer Name = der ohne Zusätze (kürzester nach Strip) */
+      const canonical=members.reduce((a,b)=>
+        charBaseName(a).length===charBaseName(b).length
+          ? (a.length<=b.length?a:b) : a, members[0]);
+      return {canonical, members};
+    });
+}
+
+/* Führt Rollen zusammen: alle aliases werden zu canonical */
+function mergeChars(sc, canonical, members){
+  const aliases=members.filter(n=>n!==canonical);
+  aliases.forEach(alias=>{
+    /* 1. Alle Skript-Zeilen: Figurenname ersetzen */
+    sc.scenes.forEach(scene=>{
+      scene.lines.forEach(line=>{
+        if(line.character===alias)line.character=canonical;
+      });
+    });
+    /* 2. Nurtöne */
+    if(sc.nurtons)sc.nurtons.forEach(n=>{if(n.character===alias)n.character=canonical;});
+    /* 3. Tonbericht activeChars + kanal */
+    if(sc.tonbericht?.sceneData){
+      Object.values(sc.tonbericht.sceneData).forEach(sd=>{
+        sd.einstellungen.forEach(ei=>{
+          if(ei.activeChars&&alias in ei.activeChars){
+            const was=ei.activeChars[alias];
+            delete ei.activeChars[alias];
+            if(!(canonical in ei.activeChars))ei.activeChars[canonical]=was;
+            else ei.activeChars[canonical]=ei.activeChars[canonical]||was;
+          }
+          if(Array.isArray(ei.kanal)){
+            const i=ei.kanal.indexOf(alias);
+            if(i>=0){ei.kanal.splice(i,1);if(!ei.kanal.includes(canonical))ei.kanal.push(canonical);}
+          }
+        });
+      });
+    }
+    /* 4. Charakter-Eintrag entfernen (Farbe vom canonical bleibt) */
+    delete sc.characters[alias];
+    /* 5. Filter zurücksetzen wenn alias aktiv war */
+    if(S.ui.fc===alias)S.ui.fc=canonical;
+  });
+  /* canonical sicherstellen */
+  if(!sc.characters[canonical])sc.characters[canonical]={color:COLS[0]};
+  save();renderAll();openMod();
+}
+
 function openMod(){
   const sc=as(),wrap=g('mchars');
   wrap.innerHTML='';
@@ -3166,7 +3271,99 @@ function openMod(){
     wrap.innerHTML='<p style="color:var(--label3);font-size:15px;padding:8px 0">Kein Drehbuch geladen.</p>';
     g('movl').classList.add('on');return;
   }
-  /* Sichtbare zuerst, dann ausgeblendete */
+
+  /* ── AUTO-ERKANNTE MERGE-KANDIDATEN ──────────────────────── */
+  const candidates=findMergeCandidates(sc);
+  if(candidates.length>0){
+    const ms=mk('div','merge-section');
+    const mhd=mk('h4');mhd.innerHTML='⚡ Ähnliche Rollen erkannt';
+    ms.appendChild(mhd);
+
+    candidates.forEach(({canonical,members})=>{
+      /* State für Kanonischen-Auswahl lokal in Closure */
+      let chosenCanonical=canonical;
+      const grp=mk('div','merge-group');
+
+      const renderGroup=()=>{
+        grp.innerHTML='';
+        const namesRow=mk('div','merge-group-names');
+        members.forEach(name=>{
+          const badge=mk('button','merge-name-badge'+(name===chosenCanonical?' canonical':''));
+          if(name===chosenCanonical)badge.innerHTML=`<span class="crown">★</span>${esc(name)}`;
+          else badge.textContent=name;
+          badge.title=name===chosenCanonical
+            ?'Dieser Name wird behalten'
+            :'Klicken um diesen als Hauptnamen zu wählen';
+          badge.onclick=()=>{chosenCanonical=name;renderGroup();};
+          namesRow.appendChild(badge);
+        });
+        grp.appendChild(namesRow);
+
+        const hint=mk('div','merge-hint');
+        hint.textContent=`★ = Hauptname der erhalten bleibt. Die anderen ${members.length-1} Variante(n) werden zusammengeführt.`;
+        grp.appendChild(hint);
+
+        const btnRow=mk('div','merge-row');btnRow.style.marginTop='8px';
+        const btn=mk('button','merge-confirm-btn');
+        btn.textContent=`✓ Zusammenführen zu „${chosenCanonical}"`;
+        btn.onclick=()=>{
+          if(!confirm(`Alle Varianten von "${chosenCanonical}" zusammenführen?\n\n${members.join('\n')}\n\n→ wird zu: "${chosenCanonical}"\n\nDieser Vorgang kann nicht rückgängig gemacht werden.`))return;
+          mergeChars(sc,chosenCanonical,members);
+        };
+        btnRow.appendChild(btn);
+        grp.appendChild(btnRow);
+      };
+      renderGroup();
+      ms.appendChild(grp);
+    });
+    wrap.appendChild(ms);
+  }
+
+  /* ── MANUELLE ZUSAMMENFÜHRUNG ─────────────────────────────── */
+  const allNames=Object.keys(sc.characters).sort((a,b)=>a.localeCompare(b));
+  if(allNames.length>=2){
+    const ms2=mk('div','merge-section');
+    const mhd2=mk('h4');mhd2.innerHTML='🔗 Manuell zusammenführen';
+    ms2.appendChild(mhd2);
+    const mm=mk('div','merge-manual');
+
+    const selA=document.createElement('select');
+    const selB=document.createElement('select');
+    allNames.forEach(n=>{
+      [selA,selB].forEach(sel=>{
+        const o=document.createElement('option');o.value=n;o.textContent=n;sel.appendChild(o);
+      });
+    });
+    if(allNames.length>1)selB.selectedIndex=1;
+
+    const mergeBtn=mk('button','merge-confirm-btn');
+    mergeBtn.textContent='Zusammenführen';
+    mergeBtn.style.marginTop='8px';
+    mergeBtn.onclick=()=>{
+      const a=selA.value,b=selB.value;
+      if(a===b){showToast('Bitte zwei verschiedene Rollen wählen','warn');return;}
+      /* A bleibt als Hauptname */
+      if(!confirm(`"${b}" zusammenführen mit "${a}"?\n"${b}" wird entfernt und durch "${a}" ersetzt.\n\nDieser Vorgang kann nicht rückgängig gemacht werden.`))return;
+      mergeChars(sc,a,[a,b]);
+    };
+
+    const row=mk('div','merge-row');row.style.gap='8px';
+    const keepLbl=mk('span');keepLbl.style.cssText='font-size:12px;color:var(--label3);white-space:nowrap';
+    keepLbl.textContent='Behalten:';
+    const removeLbl=mk('span');removeLbl.style.cssText='font-size:12px;color:var(--label3);white-space:nowrap';
+    removeLbl.textContent='→ löschen:';
+    row.append(keepLbl,selA,removeLbl,selB);
+    mm.appendChild(row);
+    mm.appendChild(mergeBtn);
+    ms2.appendChild(mm);
+    wrap.appendChild(ms2);
+  }
+
+  /* ── SICHTBARE ROLLEN MIT FARBE ───────────────────────────── */
+  const hdLbl=mk('h4');hdLbl.style.cssText='font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--label3);margin-bottom:10px';
+  hdLbl.textContent='Farben & Sichtbarkeit';
+  wrap.appendChild(hdLbl);
+
   const entries=[...Object.entries(sc.characters)]
     .sort((a,b)=>{ if(!!a[1].hidden!==!!b[1].hidden)return a[1].hidden?1:-1; return a[0].localeCompare(b[0]); });
 
@@ -3179,8 +3376,6 @@ function openMod(){
   entries.forEach(([name,ch])=>{
     const row=mk('div','crow');
     if(ch.hidden)row.style.opacity='.45';
-
-    /* Auge-Schalter: ein-/ausblenden */
     const eye=mk('button');
     eye.style.cssText='background:none;border:1px solid var(--sep);border-radius:6px;cursor:pointer;font-size:15px;padding:2px 6px;min-height:auto;flex-shrink:0';
     eye.textContent=ch.hidden?'🙈':'👁';
@@ -3188,23 +3383,15 @@ function openMod(){
     eye.onclick=()=>{
       ch.hidden=!ch.hidden;
       if(S.ui.fc===name&&ch.hidden)S.ui.fc=null;
-      save();renderScript();renderChips();
-      openMod(); /* Modal neu rendern */
+      save();renderScript();renderChips();openMod();
     };
-
     const lbl=mk('span');lbl.textContent=name;
     lbl.style.color=ch.hidden?'var(--label3)':ch.color;
     if(ch.hidden)lbl.style.textDecoration='line-through';
-
     const inp=document.createElement('input');inp.type='color';inp.value=ch.color;
     if(ch.hidden)inp.disabled=true;
-    inp.oninput=e=>{
-      const c=e.target.value;
-      ch.color=c;lbl.style.color=c;
-      syncCharColor(name,c); /* Projektweite Synchronisation */
-    };
+    inp.oninput=e=>{const c=e.target.value;ch.color=c;lbl.style.color=c;syncCharColor(name,c);};
     inp.onchange=()=>{save();renderScript();renderChips();renderTree();};
-
     row.append(eye,lbl,inp);wrap.appendChild(row);
   });
   g('movl').classList.add('on');
