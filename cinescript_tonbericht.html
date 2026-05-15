@@ -438,6 +438,7 @@ body{
   cursor:pointer;border-radius:var(--r8);position:relative;
   transition:background .1s;border-left:3px solid transparent;
   padding:2px 10px 2px 14px;margin:1px 0;
+  font-weight:600;
 }
 @media(min-width:768px){
   .ln-character{text-align:left;padding-left:185px;justify-content:flex-start}
@@ -906,6 +907,35 @@ body{
   transition:.15s;font-family:var(--font);min-height:32px;white-space:nowrap;
 }
 .tb-pill-btn:active{opacity:.7}
+/* ── Szene + Einstellung einklappen ─────────────────────────── */
+.tb-collapse-btn{
+  background:none;border:none;cursor:pointer;color:var(--label3);
+  font-size:13px;padding:4px 6px;border-radius:var(--r8);transition:.15s;
+  flex-shrink:0;line-height:1;min-height:28px;min-width:28px;
+  display:flex;align-items:center;justify-content:center;
+}
+.tb-collapse-btn:active{color:var(--label)}
+.tb-collapse-icon{display:inline-block;transition:transform .2s ease}
+.tb-collapse-icon.collapsed{transform:rotate(-90deg)}
+.tb-ei-body{overflow:hidden;transition:max-height .2s ease;max-height:2000px}
+.tb-ei-body.collapsed{max-height:0}
+.tb-scene-body{overflow:hidden;transition:max-height .25s ease;max-height:9999px}
+.tb-scene-body.collapsed{max-height:0}
+/* PU / Variante Flag-Buttons */
+.tb-flag-row{
+  display:flex;align-items:center;gap:5px;padding:4px 12px 6px;
+  border-top:0.5px solid var(--sep);flex-wrap:wrap;
+}
+.tb-flag-btn{
+  border:1.5px solid var(--sep);background:var(--fill3);border-radius:var(--r8);
+  font-size:11px;font-weight:700;padding:3px 10px;cursor:pointer;
+  color:var(--label3);transition:.15s;font-family:var(--font);
+  min-height:26px;letter-spacing:.04em;
+}
+.tb-flag-btn.on-pu{background:rgba(255,159,10,.15);color:var(--orange);border-color:var(--orange)}
+.tb-flag-btn.on-v{background:rgba(48,209,88,.15);color:var(--green);border-color:var(--green)}
+.tb-flag-lbl{font-size:10px;font-weight:600;letter-spacing:.07em;color:var(--label3);text-transform:uppercase}
+
 .tb-pill-btn.destr{color:var(--red)}
 
 /* ── Tonbericht Mobile ──────────────────────────────────────── */
@@ -1267,7 +1297,7 @@ const uid=()=>'nt_'+Date.now()+'_'+(_nid++);
 const S={
   projects:{},pid:null,sid:null,
   tab:'s',ntab:'d',mode:null,mtab:'s',
-  ui:{fc:null,q:'',si:0,chipsEdit:false,chipsCollapsed:false}
+  ui:{fc:null,q:'',si:0,chipsEdit:false,chipsCollapsed:false,tbCollapsed:{scenes:{},eis:{}}}
 };
 const isMobile=()=>window.innerWidth<768;
 const ap=()=>S.projects[S.pid]||null;
@@ -2091,7 +2121,7 @@ function tbDefaultEinstellungen(scene,sc){
   const chars=tbSceneChars(scene,sc);
   return ['A','B','C','D','E'].map((letter,i)=>({
     id:'ei_'+Date.now()+'_'+i+'_'+Math.random().toString(36).slice(2,7),
-    letter,kanal:[],
+    letter,kanal:[],isPU:false,isVariante:false,
     activeChars:Object.fromEntries(chars.map(c=>[c,true])),
     takes:[]
   }));
@@ -2148,7 +2178,7 @@ function tbAddEi(sceneId){
   const chars=scene?tbSceneChars(scene,sc):[];
   sd.einstellungen.push({
     id:'ei_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
-    letter:next,kanal:[],
+    letter:next,kanal:[],isPU:false,isVariante:false,
     activeChars:Object.fromEntries(chars.map(c=>[c,true])),
     takes:[]
   });
@@ -2284,24 +2314,45 @@ function tbSceneNum(sc,sceneId){
   const idx=sc.scenes.findIndex(s=>s.id===sceneId);
   return String(idx+1).padStart(2,'0');
 }
-function tbBuildEiName(sc,sceneId,eiLetter){
+function tbBuildEiName(sc,sceneId,ei){
+  const letter=typeof ei==='string'?ei:(ei.letter||'?');
+  const isPU=typeof ei==='object'&&ei.isPU;
+  const isV=typeof ei==='object'&&ei.isVariante;
   const p=sc.tonbericht.projekt||{};
   const k=tbGetKuerzel(sc);
   const sn=tbSceneNum(sc,sceneId);
+  const suffix=(isV?'v':'')+(isPU?'-PU':'');
   if(p.typ==='serie'&&String(p.episode||'').trim()){
     const ep=String(p.episode).trim().padStart(2,'0');
-    return `${k}-${ep}-${sn}-${eiLetter}`;
+    return `${k}-${ep}-${sn}-${letter}${suffix}`;
   }
-  return `${k}-${sn}-${eiLetter}`;
+  return `${k}-${sn}-${letter}${suffix}`;
 }
-function tbBuildTakeName(sc,sceneId,eiLetter,takeNummer){
-  return tbBuildEiName(sc,sceneId,eiLetter)+'T'+String(takeNummer).padStart(2,'0');
+function tbBuildTakeName(sc,sceneId,ei,takeNummer){
+  return tbBuildEiName(sc,sceneId,ei)+'T'+String(takeNummer).padStart(2,'0');
 }
 function tbCopyName(name,btn){
   navigator.clipboard?.writeText(name).then(()=>{
     const orig=btn.textContent;btn.textContent='✓';
     setTimeout(()=>btn.textContent=orig,1200);
   }).catch(()=>{});
+}
+function tbToggleSceneCollapse(sceneId){
+  if(!S.ui.tbCollapsed)S.ui.tbCollapsed={scenes:{},eis:{}};
+  S.ui.tbCollapsed.scenes[sceneId]=!S.ui.tbCollapsed.scenes[sceneId];
+  renderTonbericht();
+}
+function tbToggleEiCollapse(eiId){
+  if(!S.ui.tbCollapsed)S.ui.tbCollapsed={scenes:{},eis:{}};
+  S.ui.tbCollapsed.eis[eiId]=!S.ui.tbCollapsed.eis[eiId];
+  renderTonbericht();
+}
+function tbToggleEiFlag(sceneId,eiId,flag){
+  const sc=as();if(!sc)return;
+  const sd=tbGetSD(sc,sceneId);
+  const ei=sd.einstellungen.find(e=>e.id===eiId);if(!ei)return;
+  ei[flag]=!ei[flag];
+  save();renderTonbericht();
 }
 
 /* ── RENDER ──────────────────────────────────────────────────── */
@@ -2456,12 +2507,15 @@ function renderTbDrehtag(dt){
 
 function renderTbScene(scene,sc,sd){
   const drehtage=Object.values(sc.tonbericht.drehtage);
+  const collapsed=!!(S.ui.tbCollapsed?.scenes?.[scene.id]);
   const section=mk('div','tb-scene');
 
   /* Header */
   const hd=mk('div','tb-scene-hd');
+  hd.style.cursor='pointer';
   const title=mk('div','tb-scene-title');title.textContent=scene.title;title.title=scene.title;
   const dtSel=mk('select','tb-select tb-select-sm');
+  dtSel.onclick=e=>e.stopPropagation(); /* Klick auf Select soll nicht Szene toggeln */
   const optNone=document.createElement('option');optNone.value='';optNone.textContent='– Drehtag –';dtSel.appendChild(optNone);
   drehtage.forEach(dt=>{
     const o=document.createElement('option');o.value=dt.id;
@@ -2470,35 +2524,47 @@ function renderTbScene(scene,sc,sd){
     dtSel.appendChild(o);
   });
   dtSel.onchange=()=>tbAssignDrehtag(scene.id,dtSel.value);
-  hd.append(title,dtSel);
+  const colBtn=mk('button','tb-collapse-btn');
+  colBtn.title=collapsed?'Szene aufklappen':'Szene einklappen';
+  const colIcon=mk('span','tb-collapse-icon'+(collapsed?' collapsed':''));
+  colIcon.textContent='▾';
+  colBtn.appendChild(colIcon);
+  colBtn.onclick=e=>{e.stopPropagation();tbToggleSceneCollapse(scene.id);};
+  hd.append(title,dtSel,colBtn);
+  hd.onclick=()=>tbToggleSceneCollapse(scene.id);
   section.appendChild(hd);
 
-  /* Einstellungen */
+  /* Body (collapsible) */
+  const body=mk('div','tb-scene-body'+(collapsed?' collapsed':''));
   const eiList=mk('div','tb-ei-list');
   sd.einstellungen.forEach(ei=>eiList.appendChild(renderTbEi(scene,ei,sc,sd)));
-  section.appendChild(eiList);
-
-  /* Einstellungs-Steuerung */
+  body.appendChild(eiList);
   const ctrl=mk('div','tb-ei-ctrl');
   const addBtn=mk('button','tb-pill-btn');addBtn.textContent='＋ Einstellung';addBtn.onclick=()=>tbAddEi(scene.id);
   const remBtn=mk('button','tb-pill-btn destr');remBtn.textContent='− Einstellung';remBtn.onclick=()=>tbRemEi(scene.id);
   ctrl.append(addBtn,remBtn);
-  section.appendChild(ctrl);
+  body.appendChild(ctrl);
+  section.appendChild(body);
   return section;
 }
 
 function renderTbEi(scene,ei,sc,sd){
   const chars=tbSceneChars(scene,sc);
+  const collapsed=!!(S.ui.tbCollapsed?.eis?.[ei.id]);
   const card=mk('div','tb-ei-card');
 
-  /* Header */
-  const hd=mk('div','tb-ei-hd');
-  const letterWrap=mk('div');letterWrap.style.cssText='display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0';
+  /* ── Header (immer sichtbar) ── */
+  const hd=mk('div','tb-ei-hd');hd.style.cursor='pointer';
+  const letterWrap=mk('div');
+  letterWrap.style.cssText='display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0';
   const letter=mk('div','tb-ei-letter');letter.textContent=ei.letter;
   const codeName=mk('div','tb-ei-codename');
-  codeName.textContent=tbBuildEiName(sc,scene.id,ei.letter);
+  codeName.textContent=tbBuildEiName(sc,scene.id,ei);
   letterWrap.append(letter,codeName);
+
+  /* Figuren-Chips */
   const chips=mk('div','tb-char-chips');
+  chips.onclick=e=>e.stopPropagation();
   chars.forEach(name=>{
     const ch=sc.characters[name];
     const active=ei.activeChars[name]!==false;
@@ -2510,23 +2576,30 @@ function renderTbEi(scene,ei,sc,sd){
     chip.onclick=()=>tbToggleChar(scene.id,ei.id,name);
     chips.appendChild(chip);
   });
-  hd.append(letterWrap,chips);
+
+  /* Collapse-Button */
+  const colBtn=mk('button','tb-collapse-btn');
+  colBtn.title=collapsed?'Einstellung aufklappen':'Einstellung einklappen';
+  const colIcon=mk('span','tb-collapse-icon'+(collapsed?' collapsed':''));
+  colIcon.textContent='▾';colBtn.appendChild(colIcon);
+  colBtn.onclick=e=>{e.stopPropagation();tbToggleEiCollapse(ei.id);};
+
+  hd.append(letterWrap,chips,colBtn);
+  hd.onclick=()=>tbToggleEiCollapse(ei.id);
   card.appendChild(hd);
 
-  /* Kanal-Chip-Zeile */
+  /* ── Kanal-Chip-Zeile (immer sichtbar) ── */
   const TB_FIXED_MICS=['Boom 1','Boom 2','Plant'];
   const kanalRow=mk('div','tb-kanal-row');
-  const kanalLbl=mk('span','tb-kanal-row-lbl');kanalLbl.textContent='🎙 Kanal';
+  const kanalLbl=mk('span','tb-kanal-row-lbl');kanalLbl.textContent='Kanal'; /* kein Emoji */
   kanalRow.appendChild(kanalLbl);
   const kanalArr=Array.isArray(ei.kanal)?ei.kanal:[];
-  /* Fest-Mics */
   TB_FIXED_MICS.forEach(mic=>{
     const chip=mk('button','tb-kanal-chip'+(kanalArr.includes(mic)?' on':''));
     chip.textContent=mic;
     chip.onclick=()=>tbToggleKanal(scene.id,ei.id,mic);
     kanalRow.appendChild(chip);
   });
-  /* Szenen-Figuren */
   chars.forEach(name=>{
     const ch=sc.characters[name];
     const active=kanalArr.includes(name);
@@ -2538,14 +2611,28 @@ function renderTbEi(scene,ei,sc,sd){
   });
   card.appendChild(kanalRow);
 
-  /* Takes */
-  ei.takes.forEach(tk=>card.appendChild(renderTbTake(scene.id,ei.id,ei.letter,tk,sc,sd)));
+  /* ── PU / Variante Flag-Zeile (immer sichtbar) ── */
+  const flagRow=mk('div','tb-flag-row');
+  const flagLbl=mk('span','tb-flag-lbl');flagLbl.textContent='Zusatz';
+  const puBtn=mk('button','tb-flag-btn'+(ei.isPU?' on-pu':''));
+  puBtn.textContent='PU – Pickup';
+  puBtn.title='Als Pickup markieren – ändert den Dateinamen';
+  puBtn.onclick=()=>tbToggleEiFlag(scene.id,ei.id,'isPU');
+  const vBtn=mk('button','tb-flag-btn'+(ei.isVariante?' on-v':''));
+  vBtn.textContent='v – Variante';
+  vBtn.title='Als Variante markieren – ändert den Dateinamen';
+  vBtn.onclick=()=>tbToggleEiFlag(scene.id,ei.id,'isVariante');
+  flagRow.append(flagLbl,puBtn,vBtn);
+  card.appendChild(flagRow);
 
-  /* + Take */
+  /* ── Collapsible Body: Takes + Add-Button ── */
+  const body=mk('div','tb-ei-body'+(collapsed?' collapsed':''));
+  ei.takes.forEach(tk=>body.appendChild(renderTbTake(scene.id,ei.id,ei.letter,tk,sc,sd)));
   const addTake=mk('button','tb-add-take-btn');
   addTake.innerHTML='＋ Take anlegen';
   addTake.onclick=()=>tbAddTake(scene.id,ei.id);
-  card.appendChild(addTake);
+  body.appendChild(addTake);
+  card.appendChild(body);
   return card;
 }
 
@@ -2557,7 +2644,8 @@ function renderTbTake(sceneId,eiId,eiLetter,tk,sc,sd){
   const tkTotal=eiList[eiIdx]?.takes.length??1;
 
   /* ─ Take-Codename-Badge ─ */
-  const takeName=tbBuildTakeName(sc,sceneId,eiLetter,tk.nummer);
+  const eiObj=sd?sd.einstellungen.find(e=>e.id===eiId):null;
+  const takeName=tbBuildTakeName(sc,sceneId,eiObj||eiLetter,tk.nummer);
   const nameRow=mk('div','tb-take-name-row');
   const nameBadge=mk('div','tb-take-name-badge');nameBadge.textContent=takeName;
   const copyBtn=mk('button','tb-copy-btn');copyBtn.textContent='⎘';copyBtn.title='Dateinamen kopieren';
@@ -2894,8 +2982,10 @@ window.addEventListener('afterprint',function(){
 <div class="ei-hd">
   <div class="ei-hd-top">
     <span class="ei-letter">${ei.letter}</span>
-    <span class="ei-code">${esc(tbBuildEiName(sc,scene.id,ei.letter))}</span>
+    <span class="ei-code">${esc(tbBuildEiName(sc,scene.id,ei))}</span>
     ${kanalStr?`<span class="ei-kanal">${esc(kanalStr)}</span>`:''}
+    ${ei.isPU?'<span class="ei-kanal" style="background:#fff3e0;border-color:#e0a000;color:#7a5000">PU</span>':''}
+    ${ei.isVariante?'<span class="ei-kanal" style="background:#e8ffe8;border-color:#60c060;color:#2a6a2a">v</span>':''}
   </div>
   ${roleChips?`<div class="ei-roles">${roleChips}</div>`:''}
 </div>
@@ -2921,7 +3011,7 @@ window.addEventListener('afterprint',function(){
         });
         /* Störgeräusche */
         const noiseTags=tk.stoergeraeusche.map(n=>`<span class="tag noise">${esc(n)}</span>`);
-        const tkName=tbBuildTakeName(sc,scene.id,ei.letter,tk.nummer);
+        const tkName=tbBuildTakeName(sc,scene.id,ei,tk.nummer);
         html+=`<div class="take-row">
 <div><div class="take-code">${esc(tkName)}</div>${tk.isBest?'<div class="take-best">★ BEST TAKE</div>':''}${tk.label?'<div class="take-label">'+esc(tk.label)+'</div>':''}</div>
 <div><span class="stars">${starsHtml}</span></div>
