@@ -950,9 +950,49 @@ body{
 .tb-scene-num-adj{
   background:none;border:1px solid var(--sep);border-radius:var(--r8);
   color:var(--label3);font-size:10px;font-weight:600;padding:3px 8px;cursor:pointer;
-  transition:.15s;font-family:var(--font);white-space:nowrap;
+  transition:.15s;font-family:var(--font);white-space:nowrap;flex-shrink:0;
 }
 .tb-scene-num-adj:active{background:var(--fill1);color:var(--blue)}
+/* ── Szenen-Rollen-Editor ────────────────────────────────────── */
+.tb-scene-chars-panel{
+  padding:8px 12px 10px;border-bottom:0.5px solid var(--sep);
+  background:rgba(0,0,0,.08);
+}
+.tb-scene-chars-hd{
+  display:flex;align-items:center;justify-content:space-between;
+  font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--label3);margin-bottom:7px;
+}
+.tb-scene-chars-chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px}
+.tb-scene-char-badge{
+  display:flex;align-items:center;gap:4px;border-radius:var(--r20);
+  padding:3px 5px 3px 10px;font-size:11px;font-weight:600;
+  border:1.5px solid;background:transparent;cursor:default;
+}
+.tb-scene-char-remove{
+  background:none;border:none;cursor:pointer;padding:0;line-height:1;
+  font-size:12px;color:inherit;opacity:.55;transition:.12s;
+  width:18px;height:18px;display:flex;align-items:center;justify-content:center;
+  border-radius:50%;
+}
+.tb-scene-char-remove:hover{opacity:1;background:rgba(255,69,58,.2)}
+.tb-scene-char-add-row{display:flex;gap:7px;align-items:center}
+.tb-scene-char-sel{
+  flex:1;background:var(--fill3);border:none;border-radius:var(--r8);
+  color:var(--label);padding:6px 10px;font-size:13px;font-family:var(--font);
+  outline:none;cursor:pointer;min-width:0;
+}
+.tb-scene-char-add-btn{
+  background:var(--blue);color:#fff;border:none;border-radius:var(--r8);
+  font-size:12px;font-weight:600;padding:6px 14px;cursor:pointer;
+  font-family:var(--font);min-height:32px;white-space:nowrap;flex-shrink:0;
+}
+.tb-scene-char-add-btn:active{opacity:.8}
+.tb-scene-char-reset{
+  background:none;border:none;font-size:11px;color:var(--label4);cursor:pointer;
+  font-family:var(--font);padding:0;text-decoration:underline;
+}
+.tb-scene-char-reset:active{color:var(--label2)}
 /* Teilstück-Eingabe in Einstellung */
 .tb-ts-wrap{display:flex;align-items:center;gap:4px;flex-shrink:0}
 .tb-ts-lbl{font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--label3);text-transform:uppercase}
@@ -2237,9 +2277,11 @@ function tbInit(sc){
   if(!sc.tonbericht.sceneLabels)sc.tonbericht.sceneLabels={};
   sc.scenes.forEach(scene=>{
     if(!sc.tonbericht.sceneData[scene.id])
-      sc.tonbericht.sceneData[scene.id]={drehtag_id:null,einstellungen:tbDefaultEinstellungen(scene,sc)};
+      sc.tonbericht.sceneData[scene.id]={drehtag_id:null,sceneChars:null,einstellungen:tbDefaultEinstellungen(scene,sc)};
+    const sd=sc.tonbericht.sceneData[scene.id];
+    if(!('sceneChars' in sd))sd.sceneChars=null; /* Migration */
     /* Kanal-Migration: alter String → Array */
-    sc.tonbericht.sceneData[scene.id].einstellungen.forEach(ei=>{
+    sd.einstellungen.forEach(ei=>{
       if(typeof ei.kanal==='string')ei.kanal=ei.kanal?[ei.kanal]:[];
     });
   });
@@ -2258,12 +2300,64 @@ function tbSceneChars(scene,sc){
   scene.lines.forEach(l=>{if((l.type==='dialogue'||l.type==='character')&&l.character)set.add(l.character);});
   return [...set];
 }
+/* Effektive Rollen einer Szene: auto-erkannt + manuell ergänzt/entfernt */
+function tbSceneCharsEffective(scene,sc,sd){
+  const auto=tbSceneChars(scene,sc);
+  if(!sd?.sceneChars)return auto;
+  const added=sd.sceneChars.added||[];
+  const removed=new Set(sd.sceneChars.removed||[]);
+  return [...new Set([...auto.filter(c=>!removed.has(c)),...added])];
+}
+function tbAddSceneChar(sceneId,charName){
+  const sc=as();if(!sc)return;
+  const sd=tbGetSD(sc,sceneId);if(!sd)return;
+  if(!sd.sceneChars)sd.sceneChars={added:[],removed:[]};
+  /* Aus removed entfernen falls vorhanden */
+  sd.sceneChars.removed=(sd.sceneChars.removed||[]).filter(c=>c!==charName);
+  /* Zu added hinzufügen wenn nicht schon auto-erkannt */
+  const scene=sc.scenes.find(s=>s.id===sceneId);
+  const autoChars=scene?tbSceneChars(scene,sc):[];
+  if(!autoChars.includes(charName)&&!sd.sceneChars.added.includes(charName))
+    sd.sceneChars.added.push(charName);
+  /* Alle Einstellungen erhalten den neuen Char (default: aktiv) */
+  sd.einstellungen.forEach(ei=>{
+    if(!(charName in (ei.activeChars||{})))ei.activeChars[charName]=true;
+  });
+  save();renderTonbericht();
+}
+function tbRemoveSceneChar(sceneId,charName){
+  const sc=as();if(!sc)return;
+  const sd=tbGetSD(sc,sceneId);if(!sd)return;
+  if(!sd.sceneChars)sd.sceneChars={added:[],removed:[]};
+  /* Aus added entfernen */
+  sd.sceneChars.added=(sd.sceneChars.added||[]).filter(c=>c!==charName);
+  /* Zu removed hinzufügen wenn auto-erkannt */
+  const scene=sc.scenes.find(s=>s.id===sceneId);
+  const autoChars=scene?tbSceneChars(scene,sc):[];
+  if(autoChars.includes(charName)&&!(sd.sceneChars.removed||[]).includes(charName))
+    sd.sceneChars.removed.push(charName);
+  /* Aus allen Einstellungen activeChars entfernen */
+  sd.einstellungen.forEach(ei=>{delete ei.activeChars[charName];});
+  save();renderTonbericht();
+}
+function tbResetSceneChars(sceneId){
+  const sc=as();if(!sc)return;
+  const sd=tbGetSD(sc,sceneId);if(!sd)return;
+  sd.sceneChars=null;
+  /* activeChars in Einstellungen zurücksetzen auf auto-erkannte */
+  const scene=sc.scenes.find(s=>s.id===sceneId);
+  const autoChars=scene?tbSceneChars(scene,sc):[];
+  sd.einstellungen.forEach(ei=>{
+    ei.activeChars=Object.fromEntries(autoChars.map(c=>[c,ei.activeChars[c]!==false]));
+  });
+  save();renderTonbericht();
+}
 function tbGetSD(sc,sceneId){
   tbInit(sc);
   if(!sc.tonbericht.sceneData[sceneId]){
     const scene=sc.scenes.find(s=>s.id===sceneId);
     if(!scene)return null;
-    sc.tonbericht.sceneData[sceneId]={drehtag_id:null,einstellungen:tbDefaultEinstellungen(scene,sc)};
+    sc.tonbericht.sceneData[sceneId]={drehtag_id:null,sceneChars:null,einstellungen:tbDefaultEinstellungen(scene,sc)};
   }
   return sc.tonbericht.sceneData[sceneId];
 }
@@ -2499,11 +2593,11 @@ function tbSetSceneLabel(sceneId,label){
   tbInit(sc);
   sc.tonbericht.sceneLabels[sceneId]=label;
   save();
-  /* Kein vollständiges Re-Render – nur Codename-Badges aktualisieren */
-  document.querySelectorAll('[data-sceneid="'+sceneId+'"] .tb-ei-codename').forEach(el=>{
+  /* Codename-Badges live aktualisieren ohne vollständiges Re-Render */
+  document.querySelectorAll(`[data-sceneid="${sceneId}"] .tb-ei-codename`).forEach(el=>{
     const eiId=el.closest('[data-eiid]')?.dataset.eiid;
     if(!eiId)return;
-    const sd=tbGetSD(sc,sceneId);
+    const sd=sc.tonbericht.sceneData[sceneId];
     const ei=sd?.einstellungen.find(e=>e.id===eiId);
     if(ei)el.textContent=tbBuildEiName(sc,sceneId,ei);
   });
@@ -2689,6 +2783,66 @@ function renderTbDrehtag(dt){
   return card;
 }
 
+function renderSceneCharsEditor(scene,sc,sd){
+  const panel=mk('div','tb-scene-chars-panel');
+  const hd=mk('div','tb-scene-chars-hd');
+  const hdLbl=mk('span');hdLbl.textContent='Rollen in dieser Szene';
+  const hasOverride=sd.sceneChars&&((sd.sceneChars.added||[]).length>0||(sd.sceneChars.removed||[]).length>0);
+  const resetBtn=mk('button','tb-scene-char-reset');
+  resetBtn.textContent='Zurücksetzen';
+  resetBtn.title='Alle manuellen Änderungen rückgängig machen';
+  resetBtn.style.display=hasOverride?'inline':'none';
+  resetBtn.onclick=()=>tbResetSceneChars(scene.id);
+  hd.append(hdLbl,resetBtn);
+  panel.appendChild(hd);
+
+  /* Aktuelle effektive Rollen als Chips */
+  const effectiveChars=tbSceneCharsEffective(scene,sc,sd);
+  const chipsWrap=mk('div','tb-scene-chars-chips');
+  effectiveChars.forEach(name=>{
+    const ch=sc.characters[name];
+    const badge=mk('div','tb-scene-char-badge');
+    badge.style.borderColor=ch?.color||'var(--sep)';
+    badge.style.color=ch?.color||'var(--label)';
+    const lbl=mk('span');lbl.textContent=name;
+    const remBtn=mk('button','tb-scene-char-remove');
+    remBtn.textContent='✕';remBtn.title=`${name} aus dieser Szene entfernen`;
+    remBtn.onclick=()=>tbRemoveSceneChar(scene.id,name);
+    badge.append(lbl,remBtn);
+    chipsWrap.appendChild(badge);
+  });
+  if(effectiveChars.length===0){
+    const empty=mk('span');empty.style.cssText='font-size:12px;color:var(--label4);font-style:italic';
+    empty.textContent='Keine Rollen in dieser Szene';
+    chipsWrap.appendChild(empty);
+  }
+  panel.appendChild(chipsWrap);
+
+  /* Dropdown: verfügbare Rollen (aus Projekt-Charakterliste, noch nicht in Szene) */
+  const available=Object.keys(sc.characters)
+    .filter(n=>!sc.characters[n].hidden&&!effectiveChars.includes(n))
+    .sort((a,b)=>a.localeCompare(b));
+  if(available.length>0){
+    const addRow=mk('div','tb-scene-char-add-row');
+    const sel=mk('select','tb-scene-char-sel');
+    const placeholder=document.createElement('option');
+    placeholder.value='';placeholder.textContent='– Rolle hinzufügen –';
+    sel.appendChild(placeholder);
+    available.forEach(name=>{
+      const o=document.createElement('option');o.value=name;o.textContent=name;
+      sel.appendChild(o);
+    });
+    const addBtn=mk('button','tb-scene-char-add-btn');addBtn.textContent='＋ Hinzufügen';
+    addBtn.onclick=()=>{
+      if(!sel.value)return;
+      tbAddSceneChar(scene.id,sel.value);
+    };
+    addRow.append(sel,addBtn);
+    panel.appendChild(addRow);
+  }
+  return panel;
+}
+
 function renderTbScene(scene,sc,sd){
   const drehtage=Object.values(sc.tonbericht.drehtage);
   const collapsed=S.ui.tbCollapsed?.scenes?.[scene.id]!==false;
@@ -2706,17 +2860,26 @@ function renderTbScene(scene,sc,sd){
   const numWrap=mk('div','tb-scene-num-wrap');
   numWrap.onclick=e=>e.stopPropagation();
   const numInp=mk('input','tb-input tb-scene-num-inp');
-  numInp.value=currentLabel;numInp.title='Szenennummer bearbeiten';numInp.placeholder='01';
+  numInp.value=currentLabel;numInp.title='Szenennummer bearbeiten (nur diese Szene)';numInp.placeholder='01';
   numInp.onchange=()=>{
     const v=numInp.value.trim();if(!v)return;
-    tbSetSceneLabel(scene.id,v);
+    tbSetSceneLabel(scene.id,v); /* Nur diese Szene – keine anderen Szenen berührt */
+  };
+  /* Separater Button zum Weiter-Nummerieren */
+  const adjBtn=mk('button','tb-scene-num-adj');
+  adjBtn.textContent='↓ Folge-Szenen';
+  adjBtn.title='Alle folgenden Szenen ab hier weiternummerieren';
+  adjBtn.onclick=e=>{
+    e.stopPropagation();
+    const v=numInp.value.trim();
     const n=parseInt(v);
-    if(!isNaN(n)&&scIdx<sc.scenes.length-1){
-      if(confirm(`Folgende ${sc.scenes.length-scIdx-1} Szene(n) ab Nummer ${n+1} weiternummerieren?`))
+    if(isNaN(n)){showToast('Bitte erst eine Nummer eingeben','warn');return;}
+    if(scIdx<sc.scenes.length-1){
+      if(confirm(`Folgende ${sc.scenes.length-scIdx-1} Szene(n) ab Nr. ${n+1} nummerieren?`))
         tbAutoAdjustLabels(scIdx+1,n+1);
     }
   };
-  numWrap.appendChild(numInp);
+  numWrap.append(numInp,adjBtn);
 
   const dtSel=mk('select','tb-select tb-select-sm');
   dtSel.onclick=e=>e.stopPropagation(); /* Klick auf Select soll nicht Szene toggeln */
@@ -2740,6 +2903,10 @@ function renderTbScene(scene,sc,sd){
 
   /* Body (collapsible) */
   const body=mk('div','tb-scene-body'+(collapsed?' collapsed':''));
+
+  /* ── Rollen dieser Szene verwalten ── */
+  body.appendChild(renderSceneCharsEditor(scene,sc,sd));
+
   const eiList=mk('div','tb-ei-list');
   sd.einstellungen.forEach(ei=>eiList.appendChild(renderTbEi(scene,ei,sc,sd)));
   body.appendChild(eiList);
@@ -2753,7 +2920,7 @@ function renderTbScene(scene,sc,sd){
 }
 
 function renderTbEi(scene,ei,sc,sd){
-  const chars=tbSceneChars(scene,sc);
+  const chars=tbSceneCharsEffective(scene,sc,sd);
   const collapsed=S.ui.tbCollapsed?.eis?.[ei.id]!==false;
   const card=mk('div','tb-ei-card');
 
