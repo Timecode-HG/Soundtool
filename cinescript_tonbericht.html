@@ -940,7 +940,56 @@ body{
   transition:.15s;font-family:var(--font);min-height:32px;white-space:nowrap;
 }
 .tb-pill-btn:active{opacity:.7}
-/* ── Szene + Einstellung einklappen ─────────────────────────── */
+/* ── Szenennummer-Editor ─────────────────────────────────────── */
+.tb-scene-num-wrap{display:flex;align-items:center;gap:5px;flex-shrink:0}
+.tb-scene-num-inp{
+  width:56px!important;font-family:'Helvetica Neue',monospace!important;
+  font-size:12px!important;font-weight:700!important;padding:4px 6px!important;
+  text-align:center;letter-spacing:.04em;
+}
+.tb-scene-num-adj{
+  background:none;border:1px solid var(--sep);border-radius:var(--r8);
+  color:var(--label3);font-size:10px;font-weight:600;padding:3px 8px;cursor:pointer;
+  transition:.15s;font-family:var(--font);white-space:nowrap;
+}
+.tb-scene-num-adj:active{background:var(--fill1);color:var(--blue)}
+/* Teilstück-Eingabe in Einstellung */
+.tb-ts-wrap{display:flex;align-items:center;gap:4px;flex-shrink:0}
+.tb-ts-lbl{font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--label3);text-transform:uppercase}
+.tb-ts-inp{
+  width:44px!important;font-family:monospace!important;font-size:12px!important;
+  padding:3px 5px!important;text-align:center;
+}
+/* Passage-Abhaken */
+.passage-wrap{position:relative;margin:2px 0}
+.passage-mark-btn{
+  position:absolute;left:-4px;top:0;bottom:0;width:10px;cursor:pointer;
+  background:none;border:none;padding:0;
+  display:flex;align-items:center;justify-content:center;
+}
+.passage-mark-btn::before{
+  content:'';display:block;width:3px;height:100%;
+  background:rgba(10,132,255,.18);border-radius:2px;
+  transition:background .15s;
+}
+.passage-mark-btn:hover::before,.passage-mark-btn.all-rec::before{
+  background:rgba(48,209,88,.35);
+}
+.passage-mark-btn.all-rec::before{background:rgba(48,209,88,.5)}
+.passage-tick{
+  position:absolute;left:-22px;top:50%;transform:translateY(-50%);
+  background:none;border:none;font-size:11px;cursor:pointer;
+  color:var(--blue);opacity:0;transition:opacity .15s;padding:2px;
+}
+.passage-wrap:hover .passage-tick,.passage-mark-btn:hover~.ln .passage-tick{opacity:1}
+.passage-all-btn{
+  display:block;font-size:10px;font-weight:600;color:var(--blue);
+  background:rgba(10,132,255,.08);border:none;border-radius:var(--r8);
+  padding:2px 10px;cursor:pointer;margin:2px 0 4px 14px;font-family:var(--font);
+  transition:.15s;text-align:left;
+}
+.passage-all-btn:active{background:rgba(10,132,255,.18)}
+.passage-all-btn.all-done{color:var(--green);background:rgba(48,209,88,.1)}
 .tb-collapse-btn{
   background:none;border:none;cursor:pointer;color:var(--label3);
   font-size:13px;padding:4px 6px;border-radius:var(--r8);transition:.15s;
@@ -1846,11 +1895,55 @@ function renderScript(){
     sec.append(nb,ta);
 
     let hasVis=false;
-    scene.lines.forEach(line=>{
-      if(fc&&(line.type==='action'||line.type==='transition'))return;
-      if(fc&&line.character&&line.character!==fc)return;
-      if(q&&!line.text.toLowerCase().includes(q))return;
+
+    /* ── Passage-Erkennung: zusammenhängende Dialogzeilen gleicher Figur ── */
+    const visLines=scene.lines.filter(line=>{
+      if(fc&&(line.type==='action'||line.type==='transition'))return false;
+      if(fc&&line.character&&line.character!==fc)return false;
+      if(q&&!line.text.toLowerCase().includes(q))return false;
+      return true;
+    });
+    const passageMap={};     /* lineId → groupId */
+    const passageData={};    /* groupId → {lineIds:[]} */
+    let curChar=null,curIds=[],pgCtr=0;
+    const flushGroup=()=>{
+      if(curIds.length>=2){
+        const gid='pg_'+pgCtr++;
+        curIds.forEach(id=>{passageMap[id]=gid;});
+        passageData[gid]={lineIds:[...curIds]};
+      }
+      curChar=null;curIds=[];
+    };
+    visLines.forEach(line=>{
+      if(line.type==='dialogue'){
+        if(line.character===curChar){curIds.push(line.id);}
+        else{flushGroup();curChar=line.character;curIds=[line.id];}
+      } else if(line.type==='action'||line.type==='transition'){
+        flushGroup();
+      }
+      /* character/parenthetical brechen Passage nicht */
+    });
+    flushGroup();
+    const renderedPGs=new Set();
+
+    visLines.forEach(line=>{
       hasVis=true;
+
+      /* Passage-Button vor dem ersten Element der Gruppe */
+      const gid=passageMap[line.id];
+      if(gid&&!renderedPGs.has(gid)){
+        renderedPGs.add(gid);
+        const pg=passageData[gid];
+        const allRec=pg.lineIds.every(id=>sc.recorded[id]);
+        const pbtn=mk('button','passage-all-btn'+(allRec?' all-done':''));
+        pbtn.textContent=allRec?'✓ Passage vollständig aufgenommen':'▶ Passage als aufgenommen markieren';
+        pbtn.title=`${pg.lineIds.length} aufeinanderfolgende Zeilen als Gruppe abhaken`;
+        pbtn.onclick=()=>{
+          pg.lineIds.forEach(id=>{if(allRec)delete sc.recorded[id];else sc.recorded[id]=true;});
+          save();renderScript();renderSceneNav();renderHeader();
+        };
+        sec.appendChild(pbtn);
+      }
 
       const div=mk('div','ln ln-'+line.type);
       if(line.type==='character'){
@@ -1882,7 +1975,6 @@ function renderScript(){
           ico.onclick=e=>{e.stopPropagation();const n=sc.nurtons.find(n=>n.lineId===line.id);if(n)delNurton(n.id);};
           div.appendChild(ico);
         }
-        /* Long Press → Action Sheet (mobil): Alle Aktionen ohne Tastatur */
         attachLP(div,()=>showAS(scene,line));
       }
       if(line.type==='action'&&S.mode==='g'){
@@ -2138,9 +2230,11 @@ const TB_DEFAULT_NOISE=[
 
 /* ── Initialisierung ─────────────────────────────────────────── */
 function tbInit(sc){
-  if(!sc.tonbericht)sc.tonbericht={drehtage:{},sceneData:{},customNoise:[],projekt:{kuerzel:'',typ:'film',episode:''}};
+  if(!sc.tonbericht)sc.tonbericht={drehtage:{},sceneData:{},customNoise:[],projekt:{kuerzel:'',typ:'film',episode:'',eiConvention:'letters'},sceneLabels:{}};
   if(!sc.tonbericht.customNoise)sc.tonbericht.customNoise=[];
-  if(!sc.tonbericht.projekt)sc.tonbericht.projekt={kuerzel:'',typ:'film',episode:''};
+  if(!sc.tonbericht.projekt)sc.tonbericht.projekt={kuerzel:'',typ:'film',episode:'',eiConvention:'letters'};
+  if(!sc.tonbericht.projekt.eiConvention)sc.tonbericht.projekt.eiConvention='letters';
+  if(!sc.tonbericht.sceneLabels)sc.tonbericht.sceneLabels={};
   sc.scenes.forEach(scene=>{
     if(!sc.tonbericht.sceneData[scene.id])
       sc.tonbericht.sceneData[scene.id]={drehtag_id:null,einstellungen:tbDefaultEinstellungen(scene,sc)};
@@ -2154,7 +2248,7 @@ function tbDefaultEinstellungen(scene,sc){
   const chars=tbSceneChars(scene,sc);
   return ['A','B','C','D','E'].map((letter,i)=>({
     id:'ei_'+Date.now()+'_'+i+'_'+Math.random().toString(36).slice(2,7),
-    letter,kanal:[],isPU:false,isVariante:false,
+    letter,kanal:[],isPU:false,isVariante:false,teilstueck:0,
     activeChars:Object.fromEntries(chars.map(c=>[c,true])),
     takes:[]
   }));
@@ -2211,7 +2305,7 @@ function tbAddEi(sceneId){
   const chars=scene?tbSceneChars(scene,sc):[];
   sd.einstellungen.push({
     id:'ei_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
-    letter:next,kanal:[],isPU:false,isVariante:false,
+    letter:next,kanal:[],isPU:false,isVariante:false,teilstueck:0,
     activeChars:Object.fromEntries(chars.map(c=>[c,true])),
     takes:[]
   });
@@ -2344,22 +2438,34 @@ function tbGetKuerzel(sc){
   return ((sc.tonbericht.projekt||{}).kuerzel||'???').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4)||'???';
 }
 function tbSceneNum(sc,sceneId){
+  /* Benutzerdefiniertes Label bevorzugen */
+  const custom=sc.tonbericht?.sceneLabels?.[sceneId];
+  if(custom&&String(custom).trim())return String(custom).trim();
   const idx=sc.scenes.findIndex(s=>s.id===sceneId);
   return String(idx+1).padStart(2,'0');
+}
+function tbGetEiLabel(ei,convention){
+  /* convention: 'letters' (A,B,C) oder 'numbers' (1,2,3) */
+  if(!convention||convention==='letters')return ei.letter||'A';
+  /* Buchstabe → Zahl: A=1, B=2 … */
+  return String((ei.letter||'A').charCodeAt(0)-64);
 }
 function tbBuildEiName(sc,sceneId,ei){
   const letter=typeof ei==='string'?ei:(ei.letter||'?');
   const isPU=typeof ei==='object'&&ei.isPU;
   const isV=typeof ei==='object'&&ei.isVariante;
+  const ts=typeof ei==='object'&&ei.teilstueck>0?`T${ei.teilstueck}`:'';
+  const convention=sc.tonbericht?.projekt?.eiConvention||'letters';
+  const label=typeof ei==='object'?tbGetEiLabel(ei,convention):letter;
+  const flagSuffix=(isV?'v':'')+(isPU?'-PU':'');
   const p=sc.tonbericht.projekt||{};
   const k=tbGetKuerzel(sc);
-  const sn=tbSceneNum(sc,sceneId);
-  const suffix=(isV?'v':'')+(isPU?'-PU':'');
+  const sn=tbSceneNum(sc,sceneId)+(ts?ts:'');
   if(p.typ==='serie'&&String(p.episode||'').trim()){
     const ep=String(p.episode).trim().padStart(2,'0');
-    return `${k}-${ep}-${sn}-${letter}${suffix}`;
+    return `${k}-${ep}-${sn}-${label}${flagSuffix}`;
   }
-  return `${k}-${sn}-${letter}${suffix}`;
+  return `${k}-${sn}-${label}${flagSuffix}`;
 }
 function tbBuildTakeName(sc,sceneId,ei,takeNummer){
   return tbBuildEiName(sc,sceneId,ei)+'T'+String(takeNummer).padStart(2,'0');
@@ -2385,6 +2491,39 @@ function tbToggleEiFlag(sceneId,eiId,flag){
   const sd=tbGetSD(sc,sceneId);
   const ei=sd.einstellungen.find(e=>e.id===eiId);if(!ei)return;
   ei[flag]=!ei[flag];
+  save();renderTonbericht();
+}
+/* ── Szenennummer-Verwaltung ─────────────────────────────────── */
+function tbSetSceneLabel(sceneId,label){
+  const sc=as();if(!sc)return;
+  tbInit(sc);
+  sc.tonbericht.sceneLabels[sceneId]=label;
+  save();
+  /* Kein vollständiges Re-Render – nur Codename-Badges aktualisieren */
+  document.querySelectorAll('[data-sceneid="'+sceneId+'"] .tb-ei-codename').forEach(el=>{
+    const eiId=el.closest('[data-eiid]')?.dataset.eiid;
+    if(!eiId)return;
+    const sd=tbGetSD(sc,sceneId);
+    const ei=sd?.einstellungen.find(e=>e.id===eiId);
+    if(ei)el.textContent=tbBuildEiName(sc,sceneId,ei);
+  });
+}
+function tbAutoAdjustLabels(fromIdx,newNum){
+  /* Nummeriert alle Szenen ab fromIdx aufsteigend neu */
+  const sc=as();if(!sc)return;
+  tbInit(sc);
+  let n=newNum;
+  sc.scenes.slice(fromIdx).forEach(scene=>{
+    sc.tonbericht.sceneLabels[scene.id]=String(n).padStart(2,'0');
+    n++;
+  });
+  save();renderTonbericht();
+}
+function tbSetTeilstueck(sceneId,eiId,val){
+  const sc=as();if(!sc)return;
+  const sd=tbGetSD(sc,sceneId);
+  const ei=sd?.einstellungen.find(e=>e.id===eiId);if(!ei)return;
+  ei.teilstueck=Math.max(0,parseInt(val)||0);
   save();renderTonbericht();
 }
 
@@ -2444,6 +2583,18 @@ function renderTbProjekt(sc){
     epIn.oninput=()=>tbUpdProjekt('episode',epIn.value);
     epRow.append(epLbl,epIn);body.appendChild(epRow);
   }
+
+  /* Einstellungs-Namenskonvention */
+  const convRow=mk('div','tb-projekt-row');
+  const convLbl=mk('label');convLbl.textContent='Einstellungs-Nummerierung';
+  const convSeg=mk('div','tb-seg-row');
+  [['letters','A B C …'],['numbers','1 2 3 …']].forEach(([val,label])=>{
+    const btn=mk('button','tb-seg-btn'+((p.eiConvention||'letters')===val?' on':''));
+    btn.textContent=label;
+    btn.onclick=()=>tbUpdProjekt('eiConvention',val);
+    convSeg.appendChild(btn);
+  });
+  convRow.append(convLbl,convSeg);body.appendChild(convRow);
 
   card.appendChild(body);
   return card;
@@ -2540,13 +2691,33 @@ function renderTbDrehtag(dt){
 
 function renderTbScene(scene,sc,sd){
   const drehtage=Object.values(sc.tonbericht.drehtage);
-  const collapsed=!!(S.ui.tbCollapsed?.scenes?.[scene.id]);
+  const collapsed=S.ui.tbCollapsed?.scenes?.[scene.id]!==false;
+  const scIdx=sc.scenes.findIndex(s=>s.id===scene.id);
+  const currentLabel=tbSceneNum(sc,scene.id);
   const section=mk('div','tb-scene');
+  section.dataset.sceneid=scene.id;
 
   /* Header */
   const hd=mk('div','tb-scene-hd');
   hd.style.cursor='pointer';
   const title=mk('div','tb-scene-title');title.textContent=scene.title;title.title=scene.title;
+
+  /* Szenennummer-Editor */
+  const numWrap=mk('div','tb-scene-num-wrap');
+  numWrap.onclick=e=>e.stopPropagation();
+  const numInp=mk('input','tb-input tb-scene-num-inp');
+  numInp.value=currentLabel;numInp.title='Szenennummer bearbeiten';numInp.placeholder='01';
+  numInp.onchange=()=>{
+    const v=numInp.value.trim();if(!v)return;
+    tbSetSceneLabel(scene.id,v);
+    const n=parseInt(v);
+    if(!isNaN(n)&&scIdx<sc.scenes.length-1){
+      if(confirm(`Folgende ${sc.scenes.length-scIdx-1} Szene(n) ab Nummer ${n+1} weiternummerieren?`))
+        tbAutoAdjustLabels(scIdx+1,n+1);
+    }
+  };
+  numWrap.appendChild(numInp);
+
   const dtSel=mk('select','tb-select tb-select-sm');
   dtSel.onclick=e=>e.stopPropagation(); /* Klick auf Select soll nicht Szene toggeln */
   const optNone=document.createElement('option');optNone.value='';optNone.textContent='– Drehtag –';dtSel.appendChild(optNone);
@@ -2563,7 +2734,7 @@ function renderTbScene(scene,sc,sd){
   colIcon.textContent='▾';
   colBtn.appendChild(colIcon);
   colBtn.onclick=e=>{e.stopPropagation();tbToggleSceneCollapse(scene.id);};
-  hd.append(title,dtSel,colBtn);
+  hd.append(title,numWrap,dtSel,colBtn);
   hd.onclick=()=>tbToggleSceneCollapse(scene.id);
   section.appendChild(hd);
 
@@ -2583,7 +2754,7 @@ function renderTbScene(scene,sc,sd){
 
 function renderTbEi(scene,ei,sc,sd){
   const chars=tbSceneChars(scene,sc);
-  const collapsed=!!(S.ui.tbCollapsed?.eis?.[ei.id]);
+  const collapsed=S.ui.tbCollapsed?.eis?.[ei.id]!==false;
   const card=mk('div','tb-ei-card');
 
   /* ── Header (immer sichtbar) ── */
@@ -2655,7 +2826,16 @@ function renderTbEi(scene,ei,sc,sd){
   vBtn.textContent='v – Variante';
   vBtn.title='Als Variante markieren – ändert den Dateinamen';
   vBtn.onclick=()=>tbToggleEiFlag(scene.id,ei.id,'isVariante');
-  flagRow.append(flagLbl,puBtn,vBtn);
+  /* Teilstück */
+  const tsWrap=mk('div','tb-ts-wrap');
+  const tsLbl=mk('span','tb-ts-lbl');tsLbl.textContent='Teilstück T';
+  const tsInp=mk('input','tb-input tb-ts-inp');
+  tsInp.type='number';tsInp.min='0';tsInp.max='99';
+  tsInp.value=ei.teilstueck||'';tsInp.placeholder='–';
+  tsInp.title='Teilstück-Nummer (T1, T2 …) – wird an Szenennummer angehängt';
+  tsInp.oninput=()=>tbSetTeilstueck(scene.id,ei.id,tsInp.value);
+  tsWrap.append(tsLbl,tsInp);
+  flagRow.append(flagLbl,puBtn,vBtn,tsWrap);
   card.appendChild(flagRow);
 
   /* ── Collapsible Body: Takes + Add-Button ── */
