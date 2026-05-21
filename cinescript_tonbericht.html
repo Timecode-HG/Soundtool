@@ -993,8 +993,54 @@ body{
   font-family:var(--font);padding:0;text-decoration:underline;
 }
 .tb-scene-char-reset:active{color:var(--label2)}
-/* Teilstück-Eingabe in Einstellung */
-.tb-ts-wrap{display:flex;align-items:center;gap:4px;flex-shrink:0}
+/* ── Teilstück-Gruppe ────────────────────────────────────────── */
+.tb-ts-group{margin-top:12px;border-top:1.5px dashed var(--sep);padding-top:10px}
+.tb-ts-group-hd{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 10px 8px;
+}
+.tb-ts-group-lbl{
+  font-size:12px;font-weight:700;font-family:monospace;letter-spacing:.06em;
+  color:var(--blue);background:rgba(10,132,255,.1);border-radius:var(--r8);
+  padding:3px 10px;
+}
+/* ── Nurtöne-Sektion ─────────────────────────────────────────── */
+.tb-nurton-section{
+  background:rgba(48,209,88,.06);border-top:1.5px solid rgba(48,209,88,.2);
+  padding:10px 12px;
+}
+.tb-nurton-hd{
+  display:flex;align-items:center;justify-content:space-between;
+  font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--green);margin-bottom:8px;
+}
+.tb-nurton-item{
+  background:rgba(48,209,88,.08);border:1px solid rgba(48,209,88,.2);
+  border-radius:var(--r10);margin-bottom:8px;overflow:hidden;
+}
+.tb-nurton-item-hd{
+  display:flex;align-items:center;gap:8px;padding:8px 10px;
+  border-bottom:0.5px solid rgba(48,209,88,.15);
+}
+.tb-nurton-name-inp{
+  flex:1;background:transparent!important;font-size:13px!important;
+  font-weight:600!important;color:var(--green)!important;padding:2px 4px!important;
+}
+.tb-nurton-name-inp::placeholder{color:rgba(48,209,88,.4)!important}
+.tb-nurton-add-btn{
+  background:rgba(48,209,88,.15);color:var(--green);border:1px solid rgba(48,209,88,.3);
+  border-radius:var(--r8);font-size:12px;font-weight:600;padding:6px 14px;
+  cursor:pointer;font-family:var(--font);transition:.15s;
+}
+.tb-nurton-add-btn:active{background:rgba(48,209,88,.3)}
+/* ── MOS / SlowMo Flags ─────────────────────────────────────── */
+.tb-flag-btn.on-mos{background:rgba(255,69,58,.15);color:var(--red);border-color:var(--red)}
+.tb-flag-btn.on-slomo{background:rgba(100,100,255,.15);color:#7070ff;border-color:#7070ff}
+/* Take-Button außerhalb Collapsed-Body */
+.tb-add-take-row{
+  padding:4px 6px 6px;display:flex;align-items:center;justify-content:space-between;
+}
+.tb-take-count{font-size:10px;color:var(--label4);font-weight:500}
 .tb-ts-lbl{font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--label3);text-transform:uppercase}
 .tb-ts-inp{
   width:44px!important;font-family:monospace!important;font-size:12px!important;
@@ -2277,20 +2323,26 @@ function tbInit(sc){
   if(!sc.tonbericht.sceneLabels)sc.tonbericht.sceneLabels={};
   sc.scenes.forEach(scene=>{
     if(!sc.tonbericht.sceneData[scene.id])
-      sc.tonbericht.sceneData[scene.id]={drehtag_id:null,sceneChars:null,einstellungen:tbDefaultEinstellungen(scene,sc)};
+      sc.tonbericht.sceneData[scene.id]={drehtag_id:null,sceneChars:null,einstellungen:tbDefaultEinstellungen(scene,sc),teilstuecke:[],nurtonTakes:[]};
     const sd=sc.tonbericht.sceneData[scene.id];
-    if(!('sceneChars' in sd))sd.sceneChars=null; /* Migration */
-    /* Kanal-Migration: alter String → Array */
-    sd.einstellungen.forEach(ei=>{
+    if(!('sceneChars' in sd))sd.sceneChars=null;
+    if(!sd.teilstuecke)sd.teilstuecke=[];
+    if(!sd.nurtonTakes)sd.nurtonTakes=[];
+    /* Kanal + Flag-Migration */
+    const migrateEi=ei=>{
       if(typeof ei.kanal==='string')ei.kanal=ei.kanal?[ei.kanal]:[];
-    });
+      if(ei.isMOS===undefined)ei.isMOS=false;
+      if(ei.isSlowMo===undefined)ei.isSlowMo=false;
+    };
+    sd.einstellungen.forEach(migrateEi);
+    sd.teilstuecke.forEach(ts=>(ts.einstellungen||[]).forEach(migrateEi));
   });
 }
 function tbDefaultEinstellungen(scene,sc){
   const chars=tbSceneChars(scene,sc);
   return ['A','B','C','D','E'].map((letter,i)=>({
     id:'ei_'+Date.now()+'_'+i+'_'+Math.random().toString(36).slice(2,7),
-    letter,kanal:[],isPU:false,isVariante:false,teilstueck:0,
+    letter,kanal:[],isPU:false,isVariante:false,teilstueck:0,isMOS:false,isSlowMo:false,
     activeChars:Object.fromEntries(chars.map(c=>[c,true])),
     takes:[]
   }));
@@ -2357,7 +2409,7 @@ function tbGetSD(sc,sceneId){
   if(!sc.tonbericht.sceneData[sceneId]){
     const scene=sc.scenes.find(s=>s.id===sceneId);
     if(!scene)return null;
-    sc.tonbericht.sceneData[sceneId]={drehtag_id:null,sceneChars:null,einstellungen:tbDefaultEinstellungen(scene,sc)};
+    sc.tonbericht.sceneData[sceneId]={drehtag_id:null,sceneChars:null,einstellungen:tbDefaultEinstellungen(scene,sc),teilstuecke:[],nurtonTakes:[]};
   }
   return sc.tonbericht.sceneData[sceneId];
 }
@@ -2399,7 +2451,7 @@ function tbAddEi(sceneId){
   const chars=scene?tbSceneChars(scene,sc):[];
   sd.einstellungen.push({
     id:'ei_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
-    letter:next,kanal:[],isPU:false,isVariante:false,teilstueck:0,
+    letter:next,kanal:[],isPU:false,isVariante:false,teilstueck:0,isMOS:false,isSlowMo:false,
     activeChars:Object.fromEntries(chars.map(c=>[c,true])),
     takes:[]
   });
@@ -2414,17 +2466,29 @@ function tbRemEi(sceneId){
   sd.einstellungen.pop();
   save();renderTonbericht();
 }
+/* ── Einstellung in allen Gruppen finden ─────────────────────── */
+function tbGetEi(sc,sceneId,eiId){
+  const sd=tbGetSD(sc,sceneId);if(!sd)return null;
+  let ei=(sd.einstellungen||[]).find(e=>e.id===eiId);if(ei)return ei;
+  for(const ts of (sd.teilstuecke||[])){
+    ei=(ts.einstellungen||[]).find(e=>e.id===eiId);if(ei)return ei;
+  }
+  return null;
+}
+/* Alle Einstellungen einer Szene (haupt + teilstücke) */
+function tbAllEis(sd){
+  return [...(sd.einstellungen||[]),...(sd.teilstuecke||[]).flatMap(ts=>ts.einstellungen||[])];
+}
+
 function tbToggleChar(sceneId,eiId,charName){
   const sc=as();if(!sc)return;
-  const sd=tbGetSD(sc,sceneId);
-  const ei=sd.einstellungen.find(e=>e.id===eiId);if(!ei)return;
+  const ei=tbGetEi(sc,sceneId,eiId);if(!ei)return;
   ei.activeChars[charName]=!ei.activeChars[charName];
   save();renderTonbericht();
 }
 function tbToggleKanal(sceneId,eiId,kanalName){
   const sc=as();if(!sc)return;
-  const sd=tbGetSD(sc,sceneId);
-  const ei=sd.einstellungen.find(e=>e.id===eiId);if(!ei)return;
+  const ei=tbGetEi(sc,sceneId,eiId);if(!ei)return;
   if(!Array.isArray(ei.kanal))ei.kanal=[];
   const i=ei.kanal.indexOf(kanalName);
   if(i>=0)ei.kanal.splice(i,1);else ei.kanal.push(kanalName);
@@ -2434,58 +2498,48 @@ function tbToggleKanal(sceneId,eiId,kanalName){
 /* ── Take CRUD ───────────────────────────────────────────────── */
 function tbAddTake(sceneId,eiId){
   const sc=as();if(!sc)return;
-  const sd=tbGetSD(sc,sceneId);
-  const ei=sd.einstellungen.find(e=>e.id===eiId);if(!ei)return;
+  const ei=tbGetEi(sc,sceneId,eiId);if(!ei)return;
   ei.takes.push({
     id:'tk_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
     nummer:ei.takes.length+1,label:'',sterne:0,isBest:false,
-    dialog:{
-      verstaendlichkeit:null,
-      textabweichung:false,rascheln:false,ueberlappen:false,
-      versprecher:false,atemgeraeusch:false,hallecho:false,rauschen:false
-    },
+    dialog:{verstaendlichkeit:null,textabweichung:false,rascheln:false,ueberlappen:false,
+      versprecher:false,atemgeraeusch:false,hallecho:false,rauschen:false},
     stoergeraeusche:[],kommentar:''
   });
   save();renderTonbericht();
 }
 function tbDelTake(sceneId,eiId,tkId){
   const sc=as();if(!sc)return;
-  const sd=tbGetSD(sc,sceneId);
-  const ei=sd.einstellungen.find(e=>e.id===eiId);if(!ei)return;
+  const ei=tbGetEi(sc,sceneId,eiId);if(!ei)return;
   ei.takes=ei.takes.filter(t=>t.id!==tkId);
   ei.takes.forEach((t,i)=>t.nummer=i+1);
   save();renderTonbericht();
 }
 function tbUpdTake(sceneId,eiId,tkId,field,val){
   const sc=as();if(!sc)return;
-  const sd=tbGetSD(sc,sceneId);
-  const ei=sd.einstellungen.find(e=>e.id===eiId);if(!ei)return;
+  const ei=tbGetEi(sc,sceneId,eiId);if(!ei)return;
   const tk=ei.takes.find(t=>t.id===tkId);if(!tk)return;
-  if(field.startsWith('d.')){tk.dialog[field.slice(2)]=val;}
-  else{tk[field]=val;}
+  if(field.startsWith('d.'))tk.dialog[field.slice(2)]=val;
+  else tk[field]=val;
   save();
 }
 function tbSetSterne(sceneId,eiId,tkId,val){
   const sc=as();if(!sc)return;
-  const sd=tbGetSD(sc,sceneId);
-  const ei=sd.einstellungen.find(e=>e.id===eiId);if(!ei)return;
+  const ei=tbGetEi(sc,sceneId,eiId);if(!ei)return;
   const tk=ei.takes.find(t=>t.id===tkId);if(!tk)return;
   tk.sterne=tk.sterne===val?0:val;
   save();renderTonbericht();
 }
 function tbToggleBest(sceneId,eiId,tkId){
   const sc=as();if(!sc)return;
-  const sd=tbGetSD(sc,sceneId);
-  const ei=sd.einstellungen.find(e=>e.id===eiId);if(!ei)return;
+  const ei=tbGetEi(sc,sceneId,eiId);if(!ei)return;
   const tk=ei.takes.find(t=>t.id===tkId);if(!tk)return;
   tk.isBest=!tk.isBest;
   save();renderTonbericht();
 }
 function tbReorderTake(sceneId,eiId,tkId,dir){
-  /* dir: -1=up, +1=down */
   const sc=as();if(!sc)return;
-  const sd=tbGetSD(sc,sceneId);
-  const ei=sd.einstellungen.find(e=>e.id===eiId);if(!ei)return;
+  const ei=tbGetEi(sc,sceneId,eiId);if(!ei)return;
   const i=ei.takes.findIndex(t=>t.id===tkId);if(i<0)return;
   const ni=i+dir;if(ni<0||ni>=ei.takes.length)return;
   [ei.takes[i],ei.takes[ni]]=[ei.takes[ni],ei.takes[i]];
@@ -2495,9 +2549,8 @@ function tbReorderTake(sceneId,eiId,tkId,dir){
 function tbMoveTake(sceneId,fromEiId,tkId,toEiId){
   if(fromEiId===toEiId)return;
   const sc=as();if(!sc)return;
-  const sd=tbGetSD(sc,sceneId);
-  const fromEi=sd.einstellungen.find(e=>e.id===fromEiId);if(!fromEi)return;
-  const toEi=sd.einstellungen.find(e=>e.id===toEiId);if(!toEi)return;
+  const fromEi=tbGetEi(sc,sceneId,fromEiId);if(!fromEi)return;
+  const toEi=tbGetEi(sc,sceneId,toEiId);if(!toEi)return;
   const idx=fromEi.takes.findIndex(t=>t.id===tkId);if(idx<0)return;
   const [tk]=fromEi.takes.splice(idx,1);
   fromEi.takes.forEach((t,i)=>t.nummer=i+1);
@@ -2507,8 +2560,7 @@ function tbMoveTake(sceneId,fromEiId,tkId,toEiId){
 }
 function tbToggleNoise(sceneId,eiId,tkId,noise){
   const sc=as();if(!sc)return;
-  const sd=tbGetSD(sc,sceneId);
-  const ei=sd.einstellungen.find(e=>e.id===eiId);if(!ei)return;
+  const ei=tbGetEi(sc,sceneId,eiId);if(!ei)return;
   const tk=ei.takes.find(t=>t.id===tkId);if(!tk)return;
   const i=tk.stoergeraeusche.indexOf(noise);
   if(i>=0)tk.stoergeraeusche.splice(i,1);else tk.stoergeraeusche.push(noise);
@@ -2518,8 +2570,26 @@ function tbAddCustomNoise(sceneId,eiId,tkId,noise){
   const sc=as();if(!sc)return;
   noise=noise.trim();if(!noise)return;
   if(!sc.tonbericht.customNoise)sc.tonbericht.customNoise=[];
-  if(!sc.tonbericht.customNoise.includes(noise))sc.tonbericht.customNoise.push(noise);
+  /* Doppelte verhindern (case-insensitive) */
+  if(sc.tonbericht.customNoise.some(n=>n.toLowerCase()===noise.toLowerCase())||
+     TB_DEFAULT_NOISE.some(n=>n.toLowerCase()===noise.toLowerCase())){
+    showToast('Störgeräusch existiert bereits','warn');return;
+  }
+  sc.tonbericht.customNoise.push(noise);
   tbToggleNoise(sceneId,eiId,tkId,noise);
+}
+function tbRemoveCustomNoise(noise){
+  const sc=as();if(!sc)return;
+  sc.tonbericht.customNoise=(sc.tonbericht.customNoise||[]).filter(n=>n!==noise);
+  /* Auch aus allen Takes entfernen */
+  Object.values(sc.tonbericht.sceneData||{}).forEach(sd=>{
+    tbAllEis(sd).forEach(ei=>{
+      ei.takes.forEach(tk=>{
+        tk.stoergeraeusche=(tk.stoergeraeusche||[]).filter(s=>s!==noise);
+      });
+    });
+  });
+  save();renderTonbericht();
 }
 function tbUpdProjekt(field,val){
   const sc=as();if(!sc)return;
@@ -2582,12 +2652,102 @@ function tbToggleEiCollapse(eiId){
 }
 function tbToggleEiFlag(sceneId,eiId,flag){
   const sc=as();if(!sc)return;
-  const sd=tbGetSD(sc,sceneId);
-  const ei=sd.einstellungen.find(e=>e.id===eiId);if(!ei)return;
+  const ei=tbGetEi(sc,sceneId,eiId);if(!ei)return;
   ei[flag]=!ei[flag];
   save();renderTonbericht();
 }
-/* ── Szenennummer-Verwaltung ─────────────────────────────────── */
+function tbSetTeilstueck(sceneId,eiId,val){
+  const sc=as();if(!sc)return;
+  const ei=tbGetEi(sc,sceneId,eiId);if(!ei)return;
+  ei.teilstueck=Math.max(0,parseInt(val)||0);
+  save();renderTonbericht();
+}
+
+/* ── Teilstück-Gruppen CRUD ──────────────────────────────────── */
+function tbAddTeilstueck(sceneId){
+  const sc=as();if(!sc)return;
+  const sd=tbGetSD(sc,sceneId);if(!sd)return;
+  const nums=(sd.teilstuecke||[]).map(t=>t.nummer);
+  const next=(nums.length?Math.max(...nums):0)+1;
+  const scene=sc.scenes.find(s=>s.id===sceneId);
+  const chars=scene?tbSceneCharsEffective(scene,sc,sd):[];
+  const eis=['A','B','C','D','E'].map((letter,i)=>({
+    id:'ei_'+Date.now()+'_'+i+'_'+Math.random().toString(36).slice(2,7),
+    letter,kanal:[],isPU:false,isVariante:false,teilstueck:next,isMOS:false,isSlowMo:false,
+    activeChars:Object.fromEntries(chars.map(c=>[c,true])),takes:[]
+  }));
+  sd.teilstuecke.push({id:'ts_'+Date.now(),nummer:next,einstellungen:eis});
+  save();renderTonbericht();
+}
+function tbRemTeilstueck(sceneId,tsId){
+  const sc=as();if(!sc)return;
+  const sd=tbGetSD(sc,sceneId);if(!sd)return;
+  const ts=(sd.teilstuecke||[]).find(t=>t.id===tsId);
+  if(ts&&ts.einstellungen.some(e=>e.takes.length>0)&&!confirm('Teilstück hat Takes. Wirklich löschen?'))return;
+  sd.teilstuecke=(sd.teilstuecke||[]).filter(t=>t.id!==tsId);
+  save();renderTonbericht();
+}
+function tbAddEiToTs(sceneId,tsId){
+  const sc=as();if(!sc)return;
+  const sd=tbGetSD(sc,sceneId);if(!sd)return;
+  const ts=(sd.teilstuecke||[]).find(t=>t.id===tsId);if(!ts)return;
+  const used=ts.einstellungen.map(e=>e.letter);
+  const next='ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').find(l=>!used.includes(l));
+  if(!next){showToast('Maximum (26) Einstellungen erreicht','warn');return;}
+  const scene=sc.scenes.find(s=>s.id===sceneId);
+  const chars=scene?tbSceneCharsEffective(scene,sc,sd):[];
+  ts.einstellungen.push({
+    id:'ei_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+    letter:next,kanal:[],isPU:false,isVariante:false,teilstueck:ts.nummer,isMOS:false,isSlowMo:false,
+    activeChars:Object.fromEntries(chars.map(c=>[c,true])),takes:[]
+  });
+  save();renderTonbericht();
+}
+function tbRemEiFromTs(sceneId,tsId){
+  const sc=as();if(!sc)return;
+  const sd=tbGetSD(sc,sceneId);if(!sd)return;
+  const ts=(sd.teilstuecke||[]).find(t=>t.id===tsId);if(!ts)return;
+  if(!ts.einstellungen.length){showToast('Keine Einstellungen vorhanden','warn');return;}
+  const last=ts.einstellungen[ts.einstellungen.length-1];
+  if(last.takes.length>0&&!confirm(`Einstellung ${last.letter} hat ${last.takes.length} Take(s). Löschen?`))return;
+  ts.einstellungen.pop();
+  save();renderTonbericht();
+}
+
+/* ── Nurtöne pro Szene ───────────────────────────────────────── */
+function tbAddNurtonItem(sceneId){
+  const sc=as();if(!sc)return;
+  const sd=tbGetSD(sc,sceneId);if(!sd)return;
+  sd.nurtonTakes.push({id:'nt_'+Date.now(),name:'Atmo',takes:[]});
+  save();renderTonbericht();
+}
+function tbDelNurtonItem(sceneId,ntId){
+  const sc=as();if(!sc)return;
+  const sd=tbGetSD(sc,sceneId);if(!sd)return;
+  if(!confirm('Nurton-Eintrag löschen?'))return;
+  sd.nurtonTakes=sd.nurtonTakes.filter(n=>n.id!==ntId);
+  save();renderTonbericht();
+}
+function tbUpdateNurtonName(sceneId,ntId,name){
+  const sc=as();if(!sc)return;
+  const sd=tbGetSD(sc,sceneId);if(!sd)return;
+  const nt=sd.nurtonTakes.find(n=>n.id===ntId);if(nt)nt.name=name;save();
+}
+function tbAddNurtonTake(sceneId,ntId){
+  const sc=as();if(!sc)return;
+  const sd=tbGetSD(sc,sceneId);if(!sd)return;
+  const nt=sd.nurtonTakes.find(n=>n.id===ntId);if(!nt)return;
+  nt.takes.push({id:'ntk_'+Date.now(),nummer:nt.takes.length+1,sterne:0,isBest:false,kommentar:''});
+  save();renderTonbericht();
+}
+function tbDelNurtonTake(sceneId,ntId,tkId){
+  const sc=as();if(!sc)return;
+  const sd=tbGetSD(sc,sceneId);if(!sd)return;
+  const nt=sd.nurtonTakes.find(n=>n.id===ntId);if(!nt)return;
+  nt.takes=nt.takes.filter(t=>t.id!==tkId);
+  nt.takes.forEach((t,i)=>t.nummer=i+1);
+  save();renderTonbericht();
+}
 function tbSetSceneLabel(sceneId,label){
   const sc=as();if(!sc)return;
   tbInit(sc);
@@ -2611,13 +2771,6 @@ function tbAutoAdjustLabels(fromIdx,newNum){
     sc.tonbericht.sceneLabels[scene.id]=String(n).padStart(2,'0');
     n++;
   });
-  save();renderTonbericht();
-}
-function tbSetTeilstueck(sceneId,eiId,val){
-  const sc=as();if(!sc)return;
-  const sd=tbGetSD(sc,sceneId);
-  const ei=sd?.einstellungen.find(e=>e.id===eiId);if(!ei)return;
-  ei.teilstueck=Math.max(0,parseInt(val)||0);
   save();renderTonbericht();
 }
 
@@ -2783,6 +2936,47 @@ function renderTbDrehtag(dt){
   return card;
 }
 
+function renderSceneNurtonSection(sceneId,sd){
+  const sec=mk('div','tb-nurton-section');
+  const hd=mk('div','tb-nurton-hd');
+  const lbl=mk('span');lbl.innerHTML='🎙 Nurtöne dieser Szene';
+  const addBtn=mk('button','tb-nurton-add-btn');addBtn.textContent='＋ Nurton';
+  addBtn.onclick=()=>tbAddNurtonItem(sceneId);
+  hd.append(lbl,addBtn);sec.appendChild(hd);
+  (sd.nurtonTakes||[]).forEach(nt=>{
+    const item=mk('div','tb-nurton-item');
+    const itemHd=mk('div','tb-nurton-item-hd');
+    const nameIn=mk('input','tb-input tb-nurton-name-inp');
+    nameIn.value=nt.name||'';nameIn.placeholder='Nurton-Bezeichnung …';
+    nameIn.oninput=()=>tbUpdateNurtonName(sceneId,nt.id,nameIn.value);
+    const takeCount=mk('span','tb-take-count');takeCount.textContent=`${nt.takes.length} Take${nt.takes.length!==1?'s':''}`;
+    const delBtn=mk('button','tb-del-btn');delBtn.textContent='✕';
+    delBtn.onclick=()=>tbDelNurtonItem(sceneId,nt.id);
+    itemHd.append(nameIn,takeCount,delBtn);item.appendChild(itemHd);
+    /* Take-Liste */
+    nt.takes.forEach(tk=>{
+      const tkRow=mk('div','tb-take-card');tkRow.style.background='rgba(48,209,88,.04)';
+      const tkHd=mk('div','tb-take-hd');
+      const num=mk('div','tb-take-num');num.textContent='Take '+tk.nummer;
+      const stars=mk('div','tb-stars');
+      for(let i=1;i<=5;i++){const s=mk('button','tb-star'+(i<=tk.sterne?' on':''));s.textContent='★';const v=i;s.onclick=()=>{tk.sterne=tk.sterne===v?0:v;save();renderTonbericht();};stars.appendChild(s);}
+      const bestBtn=mk('button','tb-best-btn'+(tk.isBest?' on':''));bestBtn.innerHTML=tk.isBest?'🏆':'☆';
+      bestBtn.onclick=()=>{tk.isBest=!tk.isBest;save();renderTonbericht();};
+      const delTkBtn=mk('button','tb-del-btn');delTkBtn.textContent='✕';
+      delTkBtn.onclick=()=>tbDelNurtonTake(sceneId,nt.id,tk.id);
+      tkHd.append(num,stars,bestBtn,delTkBtn);tkRow.appendChild(tkHd);
+      const komIn=mk('textarea','tb-input tb-kom');komIn.value=tk.kommentar||'';komIn.placeholder='Kommentar …';komIn.rows=1;
+      komIn.oninput=()=>{tk.kommentar=komIn.value;save();};
+      tkRow.appendChild(komIn);
+      item.appendChild(tkRow);
+    });
+    const addTkBtn=mk('button','tb-add-take-btn');addTkBtn.style.borderRadius='0 0 var(--r10) var(--r10)';
+    addTkBtn.textContent='＋ Take';addTkBtn.onclick=()=>tbAddNurtonTake(sceneId,nt.id);
+    item.appendChild(addTkBtn);sec.appendChild(item);
+  });
+  return sec;
+}
+
 function renderSceneCharsEditor(scene,sc,sd){
   const panel=mk('div','tb-scene-chars-panel');
   const hd=mk('div','tb-scene-chars-hd');
@@ -2822,22 +3016,40 @@ function renderSceneCharsEditor(scene,sc,sd){
   const available=Object.keys(sc.characters)
     .filter(n=>!sc.characters[n].hidden&&!effectiveChars.includes(n))
     .sort((a,b)=>a.localeCompare(b));
-  if(available.length>0){
+  if(available.length>0||true){  /* Immer anzeigen für manuelle Eingabe */
     const addRow=mk('div','tb-scene-char-add-row');
-    const sel=mk('select','tb-scene-char-sel');
-    const placeholder=document.createElement('option');
-    placeholder.value='';placeholder.textContent='– Rolle hinzufügen –';
-    sel.appendChild(placeholder);
-    available.forEach(name=>{
-      const o=document.createElement('option');o.value=name;o.textContent=name;
-      sel.appendChild(o);
-    });
-    const addBtn=mk('button','tb-scene-char-add-btn');addBtn.textContent='＋ Hinzufügen';
-    addBtn.onclick=()=>{
-      if(!sel.value)return;
-      tbAddSceneChar(scene.id,sel.value);
+    /* Dropdown bekannter Charaktere */
+    if(available.length>0){
+      const sel=mk('select','tb-scene-char-sel');
+      const placeholder=document.createElement('option');
+      placeholder.value='';placeholder.textContent='– Bekannte Rolle –';
+      sel.appendChild(placeholder);
+      available.forEach(name=>{
+        const o=document.createElement('option');o.value=name;o.textContent=name;
+        sel.appendChild(o);
+      });
+      const addBtn=mk('button','tb-scene-char-add-btn');addBtn.textContent='＋';addBtn.title='Hinzufügen';
+      addBtn.onclick=()=>{if(!sel.value)return;tbAddSceneChar(scene.id,sel.value);};
+      addRow.append(sel,addBtn);
+    }
+    /* Freies Textfeld für neue Rollen */
+    const manualIn=mk('input','tb-input');
+    manualIn.placeholder='Neue Rolle manuell …';manualIn.style.flex='1';
+    const manualBtn=mk('button','tb-scene-char-add-btn');manualBtn.textContent='＋ Neu';
+    manualBtn.onclick=()=>{
+      const name=manualIn.value.trim().toUpperCase();
+      if(!name)return;
+      const sc=as();if(!sc)return;
+      /* Rolle in sc.characters anlegen falls noch nicht vorhanden */
+      if(!sc.characters[name]){
+        sc.characters[name]={color:COLS[Object.keys(sc.characters).length%COLS.length]};
+        save();
+      }
+      tbAddSceneChar(scene.id,name);
+      manualIn.value='';
     };
-    addRow.append(sel,addBtn);
+    manualIn.addEventListener('keydown',e=>{if(e.key==='Enter')manualBtn.click();});
+    addRow.append(manualIn,manualBtn);
     panel.appendChild(addRow);
   }
   return panel;
@@ -2903,26 +3115,56 @@ function renderTbScene(scene,sc,sd){
 
   /* Body (collapsible) */
   const body=mk('div','tb-scene-body'+(collapsed?' collapsed':''));
-
-  /* ── Rollen dieser Szene verwalten ── */
   body.appendChild(renderSceneCharsEditor(scene,sc,sd));
 
+  /* ── Haupt-Einstellungen ── */
   const eiList=mk('div','tb-ei-list');
-  sd.einstellungen.forEach(ei=>eiList.appendChild(renderTbEi(scene,ei,sc,sd)));
+  sd.einstellungen.forEach(ei=>eiList.appendChild(renderTbEi(scene,ei,sc,sd,0)));
   body.appendChild(eiList);
-  const ctrl=mk('div','tb-ei-ctrl');
+  const mainCtrl=mk('div','tb-ei-ctrl');
   const addBtn=mk('button','tb-pill-btn');addBtn.textContent='＋ Einstellung';addBtn.onclick=()=>tbAddEi(scene.id);
   const remBtn=mk('button','tb-pill-btn destr');remBtn.textContent='− Einstellung';remBtn.onclick=()=>tbRemEi(scene.id);
-  ctrl.append(addBtn,remBtn);
-  body.appendChild(ctrl);
+  mainCtrl.append(addBtn,remBtn);
+  body.appendChild(mainCtrl);
+
+  /* ── Teilstück-Gruppen ── */
+  (sd.teilstuecke||[]).forEach(ts=>{
+    const tsGroup=mk('div','tb-ts-group');
+    const tsHd=mk('div','tb-ts-group-hd');
+    const tsLbl=mk('span','tb-ts-group-lbl');tsLbl.textContent=`Teilstück T${ts.nummer}`;
+    const tsDelBtn=mk('button','tb-pill-btn destr');tsDelBtn.textContent='✕ Teilstück';tsDelBtn.style.fontSize='11px';
+    tsDelBtn.onclick=()=>tbRemTeilstueck(scene.id,ts.id);
+    tsHd.append(tsLbl,tsDelBtn);tsGroup.appendChild(tsHd);
+    const tsEiList=mk('div','tb-ei-list');
+    (ts.einstellungen||[]).forEach(ei=>tsEiList.appendChild(renderTbEi(scene,ei,sc,sd,ts.nummer)));
+    tsGroup.appendChild(tsEiList);
+    const tsCtrl=mk('div','tb-ei-ctrl');
+    const tsAddBtn=mk('button','tb-pill-btn');tsAddBtn.textContent='＋ Einstellung';tsAddBtn.onclick=()=>tbAddEiToTs(scene.id,ts.id);
+    const tsRemBtn=mk('button','tb-pill-btn destr');tsRemBtn.textContent='− Einstellung';tsRemBtn.onclick=()=>tbRemEiFromTs(scene.id,ts.id);
+    tsCtrl.append(tsAddBtn,tsRemBtn);tsGroup.appendChild(tsCtrl);
+    body.appendChild(tsGroup);
+  });
+
+  /* ── + Teilstück Button ── */
+  const tsAddRow=mk('div','tb-ei-ctrl');
+  const addTsBtn=mk('button','tb-pill-btn');addTsBtn.innerHTML='＋ Teilstück hinzufügen';
+  addTsBtn.style.color='var(--blue)';
+  addTsBtn.onclick=()=>tbAddTeilstueck(scene.id);
+  tsAddRow.appendChild(addTsBtn);
+  body.appendChild(tsAddRow);
+
+  /* ── Nurtöne-Sektion ── */
+  body.appendChild(renderSceneNurtonSection(scene.id,sd));
+
   section.appendChild(body);
   return section;
 }
 
-function renderTbEi(scene,ei,sc,sd){
+function renderTbEi(scene,ei,sc,sd,tsNummer){
   const chars=tbSceneCharsEffective(scene,sc,sd);
   const collapsed=S.ui.tbCollapsed?.eis?.[ei.id]!==false;
   const card=mk('div','tb-ei-card');
+  card.dataset.eiid=ei.id;
 
   /* ── Header (immer sichtbar) ── */
   const hd=mk('div','tb-ei-hd');hd.style.cursor='pointer';
@@ -2993,6 +3235,12 @@ function renderTbEi(scene,ei,sc,sd){
   vBtn.textContent='v – Variante';
   vBtn.title='Als Variante markieren – ändert den Dateinamen';
   vBtn.onclick=()=>tbToggleEiFlag(scene.id,ei.id,'isVariante');
+  const mosBtn=mk('button','tb-flag-btn'+(ei.isMOS?' on-mos':''));
+  mosBtn.textContent='MOS';mosBtn.title='Mit Out Sound – Bild ohne Ton';
+  mosBtn.onclick=()=>tbToggleEiFlag(scene.id,ei.id,'isMOS');
+  const slomoBtn=mk('button','tb-flag-btn'+(ei.isSlowMo?' on-slomo':''));
+  slomoBtn.textContent='SlowMo';slomoBtn.title='Slow Motion';
+  slomoBtn.onclick=()=>tbToggleEiFlag(scene.id,ei.id,'isSlowMo');
   /* Teilstück */
   const tsWrap=mk('div','tb-ts-wrap');
   const tsLbl=mk('span','tb-ts-lbl');tsLbl.textContent='Teilstück T';
@@ -3002,17 +3250,25 @@ function renderTbEi(scene,ei,sc,sd){
   tsInp.title='Teilstück-Nummer (T1, T2 …) – wird an Szenennummer angehängt';
   tsInp.oninput=()=>tbSetTeilstueck(scene.id,ei.id,tsInp.value);
   tsWrap.append(tsLbl,tsInp);
-  flagRow.append(flagLbl,puBtn,vBtn,tsWrap);
+  flagRow.append(flagLbl,puBtn,vBtn,mosBtn,slomoBtn,tsWrap);
   card.appendChild(flagRow);
 
-  /* ── Collapsible Body: Takes + Add-Button ── */
+  /* ── Collapsible Body: Takes ── */
   const body=mk('div','tb-ei-body'+(collapsed?' collapsed':''));
   ei.takes.forEach(tk=>body.appendChild(renderTbTake(scene.id,ei.id,ei.letter,tk,sc,sd)));
-  const addTake=mk('button','tb-add-take-btn');
-  addTake.innerHTML='＋ Take anlegen';
-  addTake.onclick=()=>tbAddTake(scene.id,ei.id);
-  body.appendChild(addTake);
   card.appendChild(body);
+
+  /* ── + Take immer sichtbar (außerhalb collapsed body) ── */
+  const addTakeRow=mk('div','tb-add-take-row');
+  const addTakeBtn=mk('button','tb-add-take-btn');
+  addTakeBtn.style.cssText='border-radius:0 0 var(--r10) var(--r10);flex:1';
+  addTakeBtn.textContent='＋ Take anlegen';
+  addTakeBtn.onclick=()=>tbAddTake(scene.id,ei.id);
+  const takeCountLbl=mk('span','tb-take-count');
+  takeCountLbl.textContent=`${ei.takes.length} Take${ei.takes.length!==1?'s':''}`;
+  takeCountLbl.style.padding='0 10px';
+  addTakeRow.append(addTakeBtn);
+  card.appendChild(addTakeRow);
   return card;
 }
 
@@ -3134,11 +3390,23 @@ function renderTbTake(sceneId,eiId,eiLetter,tk,sc,sd){
   const allNoise=[...TB_DEFAULT_NOISE,...(sc.tonbericht.customNoise||[])];
   const noiseWrap=mk('div','tb-bool-wrap');
   allNoise.forEach(noise=>{
+    const isCustom=(sc.tonbericht.customNoise||[]).includes(noise);
     const active=tk.stoergeraeusche.includes(noise);
     const chip=mk('button','tb-crit-chip'+(active?' on noise':''));
     chip.textContent=noise;
     chip.onclick=()=>tbToggleNoise(sceneId,eiId,tk.id,noise);
-    noiseWrap.appendChild(chip);
+    if(isCustom){
+      const wrap=mk('span');wrap.style.cssText='display:inline-flex;align-items:center;gap:2px';
+      wrap.appendChild(chip);
+      const delNoise=mk('button');
+      delNoise.textContent='×';delNoise.title='Aus Liste entfernen';
+      delNoise.style.cssText='background:none;border:none;color:var(--red);cursor:pointer;font-size:13px;padding:0 2px;line-height:1;opacity:.6';
+      delNoise.onclick=e=>{e.stopPropagation();if(confirm(`"${noise}" aus der Liste entfernen?`))tbRemoveCustomNoise(noise);};
+      wrap.appendChild(delNoise);
+      noiseWrap.appendChild(wrap);
+    } else {
+      noiseWrap.appendChild(chip);
+    }
   });
   noiseSec.appendChild(noiseWrap);
   /* Custom noise */
