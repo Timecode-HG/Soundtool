@@ -993,7 +993,21 @@ body{
   font-family:var(--font);padding:0;text-decoration:underline;
 }
 .tb-scene-char-reset:active{color:var(--label2)}
-/* ── Teilstück-Gruppe ────────────────────────────────────────── */
+/* ── Szenen-Fortschritt-Färbung ─────────────────────────────── */
+.tb-scene.sc-progress>.tb-scene-hd{
+  border-left:4px solid var(--orange);
+  background:rgba(255,159,10,.06);
+}
+.tb-scene.sc-done>.tb-scene-hd{
+  border-left:4px solid var(--green);
+  background:rgba(48,209,88,.07);
+}
+.tb-scene-progress-badge{
+  flex-shrink:0;font-size:10px;font-weight:700;border-radius:var(--r20);
+  padding:2px 8px;letter-spacing:.04em;white-space:nowrap;
+}
+.sc-progress .tb-scene-progress-badge{background:rgba(255,159,10,.2);color:var(--orange)}
+.sc-done .tb-scene-progress-badge{background:rgba(48,209,88,.2);color:var(--green)}
 .tb-ts-group{margin-top:12px;border-top:1.5px dashed var(--sep);padding-top:10px}
 .tb-ts-group-hd{
   display:flex;align-items:center;justify-content:space-between;
@@ -2418,9 +2432,32 @@ function tbGetSD(sc,sceneId){
 function tbNewDrehtag(){
   const sc=as();if(!sc)return;
   tbInit(sc);
+  const existingDts=Object.values(sc.tonbericht.drehtage);
   const id='dt_'+Date.now();
-  const num=Object.keys(sc.tonbericht.drehtage).length+1;
-  sc.tonbericht.drehtage[id]={id,datum:'',drehtag:String(num),tonmeister:'',telefon:'',email:'',mikrofon:'',samplerate:'48000',bitdepth:'24'};
+  const num=existingDts.length+1;
+  let newDt={id,datum:'',drehtag:String(num),tonmeister:'',telefon:'',email:'',mikrofon:'',samplerate:'48000',bitdepth:'24'};
+  /* Daten vom letzten Drehtag anbieten */
+  if(existingDts.length>0){
+    const last=existingDts[existingDts.length-1];
+    const hasData=last.tonmeister||last.mikrofon;
+    if(hasData){
+      const lines=[
+        `Drehtag ${last.drehtag||'–'}${last.datum?' ('+last.datum+')':''}`,
+        last.tonmeister?`Tonmeister: ${last.tonmeister}`:'',
+        last.mikrofon?`Mikrofon: ${last.mikrofon}`:'',
+        `Format: ${last.samplerate} Hz · ${last.bitdepth} Bit`
+      ].filter(Boolean).join('\n');
+      if(confirm(`Daten vom letzten Drehtag übernehmen?\n\n${lines}`)){
+        newDt.tonmeister=last.tonmeister;
+        newDt.telefon=last.telefon||'';
+        newDt.email=last.email||'';
+        newDt.mikrofon=last.mikrofon;
+        newDt.samplerate=last.samplerate;
+        newDt.bitdepth=last.bitdepth;
+      }
+    }
+  }
+  sc.tonbericht.drehtage[id]=newDt;
   save();renderTonbericht();
 }
 function tbDelDrehtag(id){
@@ -2782,15 +2819,19 @@ function renderTbProjekt(sc){
   const title=mk('div','tb-projekt-hd-title');title.textContent='🎬 Produktionskonfiguration';
   /* Vorschau des aktuellen Namensschemas */
   const preview=mk('div');
+  preview.id='tb-proj-preview';
   preview.style.cssText='font-family:monospace;font-size:11px;color:var(--blue);opacity:.8';
-  const exScene='01',exEi='A',exTk='T01';
-  const k=tbGetKuerzel(sc);
-  if(p.typ==='serie'&&String(p.episode||'').trim()){
-    const ep=String(p.episode).trim().padStart(2,'0');
-    preview.textContent=`${k}-${ep}-${exScene}-${exEi}${exTk}`;
-  } else {
-    preview.textContent=`${k}-${exScene}-${exEi}${exTk}`;
-  }
+  const updatePreview=()=>{
+    const k=(p.kuerzel||'???').toUpperCase().slice(0,4)||'???';
+    const exScene='01',exEi=(p.eiConvention==='numbers'?'1':'A'),exTk='T01';
+    if(p.typ==='serie'&&String(p.episode||'').trim()){
+      const ep=String(p.episode).trim().padStart(2,'0');
+      preview.textContent=`${k}-${ep}-${exScene}-${exEi}${exTk}`;
+    } else {
+      preview.textContent=`${k}-${exScene}-${exEi}${exTk}`;
+    }
+  };
+  updatePreview();
   hd.append(title,preview);
   card.appendChild(hd);
 
@@ -2803,9 +2844,18 @@ function renderTbProjekt(sc){
   kIn.placeholder='z.B. ORU';kIn.value=p.kuerzel||'';kIn.maxLength=4;
   kIn.style.textTransform='uppercase';kIn.style.letterSpacing='.1em';kIn.style.fontWeight='700';
   kIn.oninput=()=>{
-    kIn.value=kIn.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4);
-    tbUpdProjekt('kuerzel',kIn.value);
+    /* Nur bereinigen + speichern – KEIN renderTonbericht() → kein Focus-Verlust */
+    const pos=kIn.selectionStart;
+    const cleaned=kIn.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4);
+    kIn.value=cleaned;
+    /* Cursor-Position erhalten */
+    try{kIn.setSelectionRange(Math.min(pos,cleaned.length),Math.min(pos,cleaned.length));}catch(e){}
+    p.kuerzel=cleaned;
+    save();
+    updatePreview();
   };
+  /* Beim Verlassen des Feldes Codenames in allen Szenen auffrischen */
+  kIn.onblur=()=>renderTonbericht();
   kRow.append(kLbl,kIn);body.appendChild(kRow);
 
   /* Typ: Film / Serie */
@@ -2936,6 +2986,20 @@ function renderTbDrehtag(dt){
   return card;
 }
 
+/* ── Szenen-Fortschritt ermitteln ────────────────────────────── */
+function tbSceneProgress(sd){
+  /* Alle Einstellungen quer über Haupt + Teilstücke */
+  const allEis=tbAllEis(sd);
+  if(!allEis.length)return'none';
+  const totalTakes=allEis.reduce((s,e)=>s+e.takes.length,0);
+  if(totalTakes===0)return'none';
+  /* Nurtöne zählen auch */
+  const nurtonTakes=(sd.nurtonTakes||[]).reduce((s,n)=>s+n.takes.length,0);
+  const eisWithTakes=allEis.filter(e=>e.takes.length>0).length;
+  if(eisWithTakes===allEis.length)return'done';
+  return'progress';
+}
+
 function renderSceneNurtonSection(sceneId,sd){
   const sec=mk('div','tb-nurton-section');
   const hd=mk('div','tb-nurton-hd');
@@ -3062,6 +3126,10 @@ function renderTbScene(scene,sc,sd){
   const currentLabel=tbSceneNum(sc,scene.id);
   const section=mk('div','tb-scene');
   section.dataset.sceneid=scene.id;
+  /* Fortschritts-Klasse */
+  const progress=tbSceneProgress(sd);
+  if(progress==='done')section.classList.add('sc-done');
+  else if(progress==='progress')section.classList.add('sc-progress');
 
   /* Header */
   const hd=mk('div','tb-scene-hd');
@@ -3109,7 +3177,16 @@ function renderTbScene(scene,sc,sd){
   colIcon.textContent='▾';
   colBtn.appendChild(colIcon);
   colBtn.onclick=e=>{e.stopPropagation();tbToggleSceneCollapse(scene.id);};
-  hd.append(title,numWrap,dtSel,colBtn);
+  /* Fortschritts-Badge */
+  const allEis=tbAllEis(sd);
+  const totalTakes=allEis.reduce((s,e)=>s+e.takes.length,0);
+  const badge=mk('span','tb-scene-progress-badge');
+  if(progress==='done'){badge.textContent='✓ Fertig';}
+  else if(progress==='progress'){
+    const withTakes=allEis.filter(e=>e.takes.length>0).length;
+    badge.textContent=`${withTakes}/${allEis.length} · ${totalTakes} Take${totalTakes!==1?'s':''}`;
+  }
+  hd.append(title,numWrap,dtSel,badge,colBtn);
   hd.onclick=()=>tbToggleSceneCollapse(scene.id);
   section.appendChild(hd);
 
