@@ -2448,8 +2448,10 @@ function tbToggleSceneCollapse(sceneId){
   renderTonbericht();
 }
 function tbToggleEiCollapse(eiId){
-  if(!S.ui.tbCollapsed)S.ui.tbCollapsed={scenes:{},eis:{}};
-  S.ui.tbCollapsed.eis[eiId]=!S.ui.tbCollapsed.eis[eiId];
+  if(!S.ui.tbCollapsed)S.ui.tbCollapsed={scenes:{},eis:{},takes:{}};
+  if(!S.ui.tbCollapsed.eis)S.ui.tbCollapsed.eis={};
+  /* Standard=offen: undefined/false → true(zu), true → false(auf) */
+  S.ui.tbCollapsed.eis[eiId]=S.ui.tbCollapsed.eis[eiId]!==true;
   renderTonbericht();
 }
 function tbToggleEiFlag(sceneId,eiId,flag){
@@ -3004,7 +3006,8 @@ function renderTbScene(scene,sc,sd){
 
 function renderTbEi(scene,ei,sc,sd,tsNummer){
   const chars=tbSceneCharsEffective(scene,sc,sd);
-  const collapsed=S.ui.tbCollapsed?.eis?.[ei.id]!==false;
+  /* Einstellungen: Standard = OFFEN (nur explizit true = zugeklappt) */
+  const collapsed=S.ui.tbCollapsed?.eis?.[ei.id]===true;
   const card=mk('div','tb-ei-card');
   card.dataset.eiid=ei.id;
 
