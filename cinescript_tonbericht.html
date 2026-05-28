@@ -3118,11 +3118,8 @@ function renderTbEi(scene,ei,sc,sd,tsNummer){
 }
 
 function tbTakeFilled(tk){
-  return tk.sterne>0||tk.isBest||(tk.kommentar||'').trim()||
-    tk.dialog.verstaendlichkeit||
-    Object.values(tk.dialog).some(v=>v===true)||
-    tk.stoergeraeusche.length>0||
-    (tk.label||'').trim();
+  /* Take erst zuklappen sobald eine Sternebewertung vergeben wurde */
+  return tk.sterne>0;
 }
 function tbToggleTakeCollapse(tkId){
   if(!S.ui.tbCollapsed.takes)S.ui.tbCollapsed.takes={};
