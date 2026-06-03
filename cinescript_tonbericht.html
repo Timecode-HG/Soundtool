@@ -437,6 +437,8 @@ body{
   color:#0055cc;text-transform:uppercase;
 }
 .shd-stats{display:flex;align-items:center;gap:8px;font-size:10px;color:rgba(10,132,255,.7)}
+.kd-btn{background:none;border:1.5px solid var(--sep);border-radius:var(--r8);color:var(--label3);font-size:10px;font-weight:700;padding:2px 8px;cursor:pointer;font-family:var(--font);transition:.15s;letter-spacing:.04em;flex-shrink:0;line-height:1.4}
+.kd-btn.on{background:rgba(48,209,88,.15);color:var(--green);border-color:var(--green)}
 .smbar{width:40px;height:2px;background:rgba(10,132,255,.2);border-radius:1px;overflow:hidden}
 .smfill{height:100%;border-radius:1px;transition:width .3s;background:var(--blue)}
 
@@ -1276,7 +1278,7 @@ async function loadPDF(file,pid){
   setMsg(`Parse Drehbuch …`);
   const sid='sc_'+Date.now();
   const sc={id:sid,name:file.name.replace(/\.pdf$/i,''),
-    scenes:[],characters:{},recorded:{},notes:{},nurtons:[],wordMarkers:{}};
+    scenes:[],characters:{},recorded:{},notes:{},nurtons:[],wordMarkers:{},noDialogScenes:{}};
 
   /* Projektweite Farb-Palette: gleiche Rolle = gleiche Farbe in allen Skripten */
   const projPalette={};
@@ -1560,7 +1562,10 @@ function renderHeader(){
   g('nb-title').textContent=title;
   if(sc){
     let tot=0,rec=0;
-    sc.scenes.forEach(s=>s.lines.forEach(l=>{if(l.type==='dialogue'){tot++;if(sc.recorded[l.id])rec++;}}));
+    sc.scenes.forEach(s=>{
+      if(sc.noDialogScenes?.[s.id]){tot+=1;rec+=1;return;}
+      s.lines.forEach(l=>{if(l.type==='dialogue'){tot++;if(sc.recorded[l.id])rec++;}});
+    });
     const pct=tot?Math.round(rec/tot*100):0;
     g('nb-prog').textContent=pct+'%';
     g('gfill').style.width=pct+'%';
@@ -1615,14 +1620,15 @@ function renderSceneNav(){
   const nav=g('snav');nav.innerHTML='';
   const sc=as();if(!sc)return;
   sc.scenes.forEach((scene,idx)=>{
+    const isND=!!sc.noDialogScenes?.[scene.id];
     const d=scene.lines.filter(l=>l.type==='dialogue');
-    const r=d.filter(l=>sc.recorded[l.id]).length;
-    const p=d.length?r/d.length:0;
+    const r=isND?d.length:d.filter(l=>sc.recorded[l.id]).length;
+    const p=isND?1:(d.length?r/d.length:0);
     const col=p>=1?'#30d158':p>.5?'#ff9f0a':'#ff453a';
     const item=mk('div','scn'+(S.ui.si===idx?' on':''));
-    item.innerHTML=`<div class="scn-lbl">${esc(scene.title)}</div>
+    item.innerHTML=`<div class="scn-lbl">${esc(scene.title)}${isND?' <span style="font-size:9px;opacity:.7">KD</span>':''}</div>
       <div class="pt"><div class="pf" style="width:${p*100}%;background:${col}"></div></div>
-      <div class="pl">${r}/${d.length} · ${Math.round(p*100)}%</div>`;
+      <div class="pl">${isND?'Kein Dialog':r+'/'+d.length+' · '+Math.round(p*100)+'%'}</div>`;
     item.onclick=()=>{
       S.ui.si=idx;
       document.getElementById('s'+scene.id)?.scrollIntoView({behavior:'smooth',block:'start'});
@@ -1741,12 +1747,17 @@ function renderScript(){
     const sec=mk('div','ssec');sec.id='s'+scene.id;
 
     const hd=mk('div','shd');
+    const isND=!!sc.noDialogScenes?.[scene.id];
+    const kdBtn=mk('button','kd-btn'+(isND?' on':''));
+    kdBtn.textContent='Kein Dialog';kdBtn.title='Szene ohne Dialog als aufgenommen markieren';
+    kdBtn.onclick=e=>{e.stopPropagation();toggleNoDialog(scene.id);};
     hd.innerHTML=`<span>${esc(scene.title)}</span>
       <div class="shd-stats">
-        <span>${r}/${d.length}</span>
+        ${isND?'<span style="color:var(--green);font-weight:600">✓ Kein Dialog</span>':`<span>${r}/${d.length}</span>
         <div class="smbar"><div class="smfill" style="width:${p*100}%;background:${col}"></div></div>
-        <span>${Math.round(p*100)}%</span>
+        <span>${Math.round(p*100)}%</span>`}
       </div>`;
+    hd.appendChild(kdBtn);
     sec.appendChild(hd);
 
     // Notes
@@ -2095,8 +2106,23 @@ const TB_DEFAULT_NOISE=[
 
 /* ── Initialisierung ─────────────────────────────────────────── */
 function tbInit(sc){
-  if(!sc.tonbericht)sc.tonbericht={drehtage:{},sceneData:{},customNoise:[],projekt:{kuerzel:'',typ:'film',episode:'',eiConvention:'letters'},sceneLabels:{}};
-  if(!sc.tonbericht.customNoise)sc.tonbericht.customNoise=[];
+  const p=ap();
+  /* ── Projekt-Level: Drehtage + customNoise ───────────────────── */
+  if(p){
+    if(!p.drehtage)p.drehtage={};
+    if(!p.customNoise)p.customNoise=[];
+    /* Migration script-level → projekt-level (einmalig) */
+    if(sc.tonbericht?.drehtage&&Object.keys(sc.tonbericht.drehtage).length>0){
+      Object.assign(p.drehtage,sc.tonbericht.drehtage);
+      sc.tonbericht.drehtage={};
+    }
+    if(sc.tonbericht?.customNoise?.length>0){
+      sc.tonbericht.customNoise.forEach(n=>{if(!p.customNoise.includes(n))p.customNoise.push(n);});
+      sc.tonbericht.customNoise=[];
+    }
+  }
+  /* ── Script-Level ────────────────────────────────────────────── */
+  if(!sc.tonbericht)sc.tonbericht={sceneData:{},projekt:{kuerzel:'',typ:'film',episode:'',eiConvention:'letters'},sceneLabels:{}};
   if(!sc.tonbericht.projekt)sc.tonbericht.projekt={kuerzel:'',typ:'film',episode:'',eiConvention:'letters'};
   if(!sc.tonbericht.projekt.eiConvention)sc.tonbericht.projekt.eiConvention='letters';
   if(!sc.tonbericht.sceneLabels)sc.tonbericht.sceneLabels={};
@@ -2196,8 +2222,9 @@ function tbGetSD(sc,sceneId){
 /* ── Drehtag CRUD ────────────────────────────────────────────── */
 function tbNewDrehtag(){
   const sc=as();if(!sc)return;
+  const p=ap();if(!p)return;
   tbInit(sc);
-  const existingDts=Object.values(sc.tonbericht.drehtage);
+  const existingDts=Object.values(p.drehtage||{});
   const id='dt_'+Date.now();
   const num=existingDts.length+1;
   let newDt={id,datum:'',drehtag:String(num),tonmeister:'',telefon:'',email:'',mikrofon:'',samplerate:'48000',bitdepth:'24'};
@@ -2222,19 +2249,19 @@ function tbNewDrehtag(){
       }
     }
   }
-  sc.tonbericht.drehtage[id]=newDt;
+  p.drehtage[id]=newDt;
   save();renderTonbericht();
 }
 function tbDelDrehtag(id){
-  const sc=as();if(!sc)return;
+  const sc=as(),p=ap();if(!sc||!p)return;
   if(!confirm('Drehtag löschen?'))return;
-  delete sc.tonbericht.drehtage[id];
+  delete p.drehtage[id];
   Object.values(sc.tonbericht.sceneData).forEach(sd=>{if(sd.drehtag_id===id)sd.drehtag_id=null;});
   save();renderTonbericht();
 }
 function tbUpdateDrehtag(id,field,val){
-  const sc=as();if(!sc)return;
-  if(sc.tonbericht.drehtage[id]){sc.tonbericht.drehtage[id][field]=val;save();}
+  const p=ap();if(!p)return;
+  if(p.drehtage[id]){p.drehtage[id][field]=val;save();}
 }
 function tbAssignDrehtag(sceneId,dtId){
   const sc=as();if(!sc)return;
@@ -2369,25 +2396,26 @@ function tbToggleNoise(sceneId,eiId,tkId,noise){
   save();renderTonbericht();
 }
 function tbAddCustomNoise(sceneId,eiId,tkId,noise){
-  const sc=as();if(!sc)return;
+  const sc=as(),p=ap();if(!sc||!p)return;
   noise=noise.trim();if(!noise)return;
-  if(!sc.tonbericht.customNoise)sc.tonbericht.customNoise=[];
-  /* Doppelte verhindern (case-insensitive) */
-  if(sc.tonbericht.customNoise.some(n=>n.toLowerCase()===noise.toLowerCase())||
+  if(!p.customNoise)p.customNoise=[];
+  if(p.customNoise.some(n=>n.toLowerCase()===noise.toLowerCase())||
      TB_DEFAULT_NOISE.some(n=>n.toLowerCase()===noise.toLowerCase())){
     showToast('Störgeräusch existiert bereits','warn');return;
   }
-  sc.tonbericht.customNoise.push(noise);
+  p.customNoise.push(noise);
   tbToggleNoise(sceneId,eiId,tkId,noise);
 }
 function tbRemoveCustomNoise(noise){
-  const sc=as();if(!sc)return;
-  sc.tonbericht.customNoise=(sc.tonbericht.customNoise||[]).filter(n=>n!==noise);
-  /* Auch aus allen Takes entfernen */
-  Object.values(sc.tonbericht.sceneData||{}).forEach(sd=>{
-    tbAllEis(sd).forEach(ei=>{
-      ei.takes.forEach(tk=>{
-        tk.stoergeraeusche=(tk.stoergeraeusche||[]).filter(s=>s!==noise);
+  const sc=as(),p=ap();if(!sc||!p)return;
+  p.customNoise=(p.customNoise||[]).filter(n=>n!==noise);
+  /* Auch aus allen Takes aller Skripte dieses Projekts entfernen */
+  Object.values(S.projects[S.pid]?.scripts||{}).forEach(script=>{
+    Object.values(script.tonbericht?.sceneData||{}).forEach(sd=>{
+      tbAllEis(sd).forEach(ei=>{
+        ei.takes.forEach(tk=>{
+          tk.stoergeraeusche=(tk.stoergeraeusche||[]).filter(s=>s!==noise);
+        });
       });
     });
   });
@@ -2665,7 +2693,7 @@ function renderTbProjekt(sc){
 }
 
 function renderTonbericht(){
-  const wrap=g('tb-content'),sc=as();
+  const wrap=g('tb-content'),sc=as(),p=ap();
   if(!wrap)return;
   if(!sc){
     wrap.innerHTML='<div style="padding:48px 24px;text-align:center;color:var(--label3);font-size:15px">🎚<br><br>Kein Drehbuch geladen.</div>';
@@ -2689,7 +2717,7 @@ function renderTonbericht(){
   dtHd.appendChild(addDtBtn);
   dtSec.appendChild(dtHd);
 
-  const dts=Object.values(sc.tonbericht.drehtage);
+  const dts=Object.values(p?.drehtage||{});
   if(dts.length===0){
     const empty=mk('div','tb-empty');empty.textContent='Noch keine Drehtage erfasst.';
     dtSec.appendChild(empty);
@@ -2887,7 +2915,8 @@ function renderSceneCharsEditor(scene,sc,sd){
 }
 
 function renderTbScene(scene,sc,sd){
-  const drehtage=Object.values(sc.tonbericht.drehtage);
+  const p=ap();
+  const drehtage=Object.values(p?.drehtage||{});
   const collapsed=S.ui.tbCollapsed?.scenes?.[scene.id]!==false;
   const scIdx=sc.scenes.findIndex(s=>s.id===scene.id);
   const currentLabel=tbSceneNum(sc,scene.id);
@@ -3130,6 +3159,7 @@ function tbToggleTakeCollapse(tkId){
 }
 
 function renderTbTake(sceneId,eiId,eiLetter,tk,sc,sd){
+  const p=ap();
   /* Collapse: gefüllte Takes sind standardmäßig zugeklappt */
   if(!S.ui.tbCollapsed.takes)S.ui.tbCollapsed.takes={};
   const filledDefault=tbTakeFilled(tk);
@@ -3277,10 +3307,10 @@ function renderTbTake(sceneId,eiId,eiLetter,tk,sc,sd){
   const noiseSec=mk('div','tb-criteria-section');
   const noiseHd=mk('div','tb-criteria-hd');noiseHd.innerHTML='🔊&nbsp; Störgeräusche';
   noiseSec.appendChild(noiseHd);
-  const allNoise=[...TB_DEFAULT_NOISE,...(sc.tonbericht.customNoise||[])];
+  const allNoise=[...TB_DEFAULT_NOISE,...(p?.customNoise||[])];
   const noiseWrap=mk('div','tb-bool-wrap');
   allNoise.forEach(noise=>{
-    const isCustom=(sc.tonbericht.customNoise||[]).includes(noise);
+    const isCustom=(p?.customNoise||[]).includes(noise);
     const active=tk.stoergeraeusche.includes(noise);
     const chip=mk('button','tb-crit-chip'+(active?' on noise':''));
     chip.textContent=noise;
@@ -3479,7 +3509,7 @@ window.addEventListener('afterprint',function(){
 </div>`;
 
   /* ── Drehtage ── */
-  const drehtage=Object.values(sc.tonbericht.drehtage);
+  const drehtage=Object.values(p?.drehtage||{});
   if(drehtage.length>0){
     html+='<div class="dt-section"><div class="dt-section-title">Drehtage &amp; Produktionsdaten</div><div class="dt-grid">';
     drehtage.forEach(dt=>{
@@ -3503,7 +3533,7 @@ window.addEventListener('afterprint',function(){
   sc.scenes.forEach(scene=>{
     const sd=sc.tonbericht.sceneData[scene.id];if(!sd)return;
     const hasTakes=sd.einstellungen.some(e=>e.takes.length>0);if(!hasTakes)return;
-    const dt=sd.drehtag_id?sc.tonbericht.drehtage[sd.drehtag_id]:null;
+    const dt=sd.drehtag_id?(p?.drehtage||{})[sd.drehtag_id]:null;
     const dtInfo=dt?`Tag ${esc(dt.drehtag||'–')}${dt.datum?' · '+esc(dt.datum):''}${dt.tonmeister?' · '+esc(dt.tonmeister):''}` :'';
     html+=`<div class="scene-block">
 <div class="scene-hd">
@@ -3645,6 +3675,13 @@ function setMode(m){
 function togRec(lid){
   const sc=as();if(!sc)return;
   if(sc.recorded[lid])delete sc.recorded[lid];else sc.recorded[lid]=true;
+  save();renderScript();renderSceneNav();renderHeader();
+}
+function toggleNoDialog(sceneId){
+  const sc=as();if(!sc)return;
+  if(!sc.noDialogScenes)sc.noDialogScenes={};
+  if(sc.noDialogScenes[sceneId])delete sc.noDialogScenes[sceneId];
+  else sc.noDialogScenes[sceneId]=true;
   save();renderScript();renderSceneNav();renderHeader();
 }
 
