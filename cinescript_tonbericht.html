@@ -327,6 +327,7 @@ body{
 .mode-pill.on.d{background:rgba(10,132,255,.2);color:var(--blue)}
 .mode-pill.on.g{background:rgba(48,209,88,.18);color:var(--green)}
 .mode-pill.on.w{background:rgba(255,159,10,.2);color:var(--orange)}
+.mode-pill.on.c{background:rgba(255,214,10,.18);color:#aa8800}
 #srch-wrap{
   display:flex;align-items:center;gap:0;background:var(--fill3);
   border-radius:var(--r10);flex:1;min-width:100px;max-width:280px;margin-left:auto;
@@ -387,6 +388,32 @@ body{
 #mbar.d{height:34px;background:rgba(10,132,255,.15);border-bottom:0.5px solid rgba(10,132,255,.3);color:var(--blue)}
 #mbar.g{height:34px;background:rgba(48,209,88,.12);border-bottom:0.5px solid rgba(48,209,88,.25);color:var(--green)}
 #mbar.w{height:34px;background:rgba(255,159,10,.12);border-bottom:0.5px solid rgba(255,159,10,.3);color:var(--orange)}
+#mbar.c{height:34px;background:rgba(255,214,10,.1);border-bottom:0.5px solid rgba(255,214,10,.3);color:#cc9900}
+/* ── Zeilen-Kommentare ───────────────────────────────────────── */
+.ln-comment{
+  display:flex;align-items:flex-start;gap:7px;
+  margin:0 6px 6px 14px;padding:5px 10px 5px 8px;
+  background:rgba(255,214,10,.09);border-radius:var(--r8);
+  border-left:2px solid rgba(255,214,10,.45);font-size:12px;line-height:1.45;
+}
+.ln-comment-icon{font-size:11px;flex-shrink:0;opacity:.7;padding-top:1px}
+.ln-comment-text{flex:1;color:rgba(255,220,60,.88);font-style:italic;word-break:break-word}
+.ln-comment-del{background:none;border:none;cursor:pointer;color:rgba(255,214,10,.35);font-size:13px;padding:0 2px;flex-shrink:0;transition:.12s;line-height:1}
+.ln-comment-del:hover{color:var(--red)}
+.ln-comment-editor{
+  margin:0 6px 6px 14px;
+  background:rgba(255,214,10,.07);border-radius:var(--r8);
+  border:1.5px solid rgba(255,214,10,.38);overflow:hidden;
+}
+.ln-comment-ta{
+  width:100%;min-height:50px;background:transparent;border:none;
+  color:rgba(255,230,80,.95);font-size:12px;font-family:var(--font);
+  padding:7px 10px;resize:none;outline:none;line-height:1.5;
+}
+.ln-comment-ta::placeholder{color:rgba(255,214,10,.28)}
+.ln-comment-hint{font-size:10px;color:rgba(255,214,10,.3);padding:1px 10px 5px}
+.ln-dialogue.cclk{cursor:pointer}
+.ln-dialogue.cclk:hover{background:rgba(255,214,10,.07);border-left-color:rgba(255,214,10,.4)}
 /* ── Wort-Marker ─────────────────────────────────────────────── */
 .wm{display:inline;border-radius:3px;transition:background .1s}
 .wm.clk{cursor:pointer}
@@ -715,6 +742,7 @@ body{
 #fab-btn.d{background:var(--blue)}
 #fab-btn.g{background:var(--green)}
 #fab-btn.w{background:var(--orange)}
+#fab-btn.c{background:#cc9900}
 #fab-label{
   background:rgba(28,28,30,.95);color:var(--label);
   font-size:12px;font-weight:600;padding:5px 12px;border-radius:var(--r20);
@@ -1085,6 +1113,7 @@ body{
           <button id="mbd" class="mode-pill" onclick="setMode('d')" title="[1]"><span class="pill-full">🎙 Dialog</span><span class="pill-short">🎙</span></button>
           <button id="mbg" class="mode-pill" onclick="setMode('g')" title="[2]"><span class="pill-full">🔊 Geräusch</span><span class="pill-short">🔊</span></button>
           <button id="mbw" class="mode-pill" onclick="setMode('w')" title="[3]"><span class="pill-full">✏ Wort-Marker</span><span class="pill-short">✏</span></button>
+          <button id="mbc" class="mode-pill" onclick="setMode('c')" title="[4]"><span class="pill-full">💬 Kommentar</span><span class="pill-short">💬</span></button>
           <div id="srch-wrap">
             <input id="srch" type="search" placeholder="Suchen …" autocomplete="off" oninput="doSearch(this.value)">
           </div>
@@ -1246,7 +1275,7 @@ const uid=()=>'nt_'+Date.now()+'_'+(_nid++);
 const S={
   projects:{},pid:null,sid:null,
   tab:'s',ntab:'d',mode:null,mtab:'s',
-  ui:{fc:null,q:'',si:0,chipsEdit:false,chipsCollapsed:false,tbCollapsed:{scenes:{},eis:{}}}
+  ui:{fc:null,q:'',si:0,chipsEdit:false,chipsCollapsed:false,tbCollapsed:{scenes:{},eis:{}},editingCommentLineId:null}
 };
 const isMobile=()=>window.innerWidth<768;
 const ap=()=>S.projects[S.pid]||null;
@@ -1278,7 +1307,7 @@ async function loadPDF(file,pid){
   setMsg(`Parse Drehbuch …`);
   const sid='sc_'+Date.now();
   const sc={id:sid,name:file.name.replace(/\.pdf$/i,''),
-    scenes:[],characters:{},recorded:{},notes:{},nurtons:[],wordMarkers:{},noDialogScenes:{}};
+    scenes:[],characters:{},recorded:{},notes:{},nurtons:[],wordMarkers:{},noDialogScenes:{},lineComments:{}};
 
   /* Projektweite Farb-Palette: gleiche Rolle = gleiche Farbe in allen Skripten */
   const projPalette={};
@@ -1836,12 +1865,14 @@ function renderScript(){
         if(line.isOff)div.classList.add('isoff');
         if(S.mode==='g')div.classList.add('gclk');
         if(S.mode==='w')div.classList.add('wclk');
+        if(S.mode==='c')div.classList.add('cclk');
         div.onclick=(e)=>{
           if(S.mode==='w'){
             const ws=e.target.closest('[data-wkey]');
             if(ws)toggleWordMarker(ws.dataset.wkey);
             return;
           }
+          if(S.mode==='c'){openLineComment(line.id);return;}
           if(S.mode==='d')addNtDialog(scene,line);
           else if(S.mode==='g')addNtGerausch(scene,line);
           else togRec(line.id);
@@ -1869,6 +1900,11 @@ function renderScript(){
       }
       div.insertBefore(sp,div.firstChild);
       sec.appendChild(div);
+      /* ── Zeilen-Kommentar ── */
+      if(line.type==='dialogue'){
+        const commentEl=renderLineComment(line,sc);
+        if(commentEl)sec.appendChild(commentEl);
+      }
     });
     if(!q||hasVis)wrap.appendChild(sec);
   });
@@ -3655,19 +3691,23 @@ function closeSidebar(){
   g('sidebar-backdrop').classList.remove('on');
 }
 function resetModeUI(){
-  g('mbd').className='mode-pill';g('mbg').className='mode-pill';g('mbw').className='mode-pill';
+  g('mbd').className='mode-pill';g('mbg').className='mode-pill';
+  g('mbw').className='mode-pill';g('mbc').className='mode-pill';
   const mb=g('mbar');mb.textContent='';mb.className='';
   updateFAB();
 }
 function setMode(m){
   S.mode=S.mode===m?null:m;
+  if(S.mode!=='c')S.ui.editingCommentLineId=null;
   g('mbd').className='mode-pill'+(S.mode==='d'?' on d':'');
   g('mbg').className='mode-pill'+(S.mode==='g'?' on g':'');
   g('mbw').className='mode-pill'+(S.mode==='w'?' on w':'');
+  g('mbc').className='mode-pill'+(S.mode==='c'?' on c':'');
   const mb=g('mbar');
   if(S.mode==='d'){mb.textContent='🎙 Dialog-Marker aktiv – Dialogzeile tippen → Nurtonliste';mb.className='d';}
   else if(S.mode==='g'){mb.textContent='🔊 Geräusch-Marker aktiv – Aktionszeile tippen → Geräusch erfassen';mb.className='g';}
   else if(S.mode==='w'){mb.textContent='✏ Wort-Marker aktiv – einzelne Wörter antippen, die noch nicht sauber aufgenommen sind';mb.className='w';}
+  else if(S.mode==='c'){mb.textContent='💬 Kommentar-Modus – Dialogzeile antippen um einen Kommentar hinzuzufügen';mb.className='c';}
   else{mb.textContent='';mb.className='';}
   updateFAB();
   renderScript();
@@ -3726,6 +3766,93 @@ function clearLineWordMarkers(lineId){
 function lineHasWordMarkers(lineId){
   const sc=as();if(!sc||!sc.wordMarkers)return false;
   return Object.keys(sc.wordMarkers).some(k=>k.startsWith(lineId+'_'));
+}
+
+/* ── ZEILEN-KOMMENTARE ───────────────────────────────────────── */
+function setLineComment(lineId,text){
+  const sc=as();if(!sc)return;
+  if(!sc.lineComments)sc.lineComments={};
+  if(text.trim())sc.lineComments[lineId]=text;
+  else delete sc.lineComments[lineId];
+  save();
+}
+function deleteLineComment(lineId){
+  const sc=as();if(!sc)return;
+  if(sc.lineComments)delete sc.lineComments[lineId];
+  S.ui.editingCommentLineId=null;
+  save();renderScript();
+}
+function openLineComment(lineId){
+  S.ui.editingCommentLineId=lineId;
+  renderScript();
+  /* Focus auf Textarea nach Render */
+  requestAnimationFrame(()=>{
+    const ta=document.querySelector('.ln-comment-ta[data-lid="'+lineId+'"]');
+    if(ta){ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length);}
+  });
+}
+function renderLineComment(line,sc){
+  /* Gibt null oder ein DOM-Element zurück, das nach dem Dialog-div eingefügt wird */
+  const hasComment=!!(sc.lineComments?.[line.id]?.trim());
+  const isEditing=S.ui.editingCommentLineId===line.id;
+  if(!hasComment&&!isEditing&&S.mode!=='c')return null;
+  if(isEditing){
+    /* Inline-Editor */
+    const wrap=mk('div','ln-comment-editor');
+    const ta=mk('textarea','ln-comment-ta');
+    ta.dataset.lid=line.id;
+    ta.placeholder='Kommentar eingeben … (Esc = schließen)';
+    ta.value=sc.lineComments?.[line.id]||'';
+    ta.oninput=()=>setLineComment(line.id,ta.value);
+    ta.onkeydown=e=>{
+      if(e.key==='Escape'){
+        S.ui.editingCommentLineId=null;
+        renderScript();
+      }
+      if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)){
+        S.ui.editingCommentLineId=null;
+        renderScript();
+      }
+      e.stopPropagation(); /* Kein Mode-Switch durch Ziffern */
+    };
+    ta.onblur=()=>{
+      /* Kurz warten damit Klick auf Löschen-Button noch ausgelöst werden kann */
+      setTimeout(()=>{
+        if(S.ui.editingCommentLineId===line.id){
+          S.ui.editingCommentLineId=null;
+          renderScript();
+        }
+      },180);
+    };
+    const hint=mk('div','ln-comment-hint');
+    hint.textContent='Esc oder ⌘+Enter zum Schließen';
+    wrap.append(ta,hint);
+    return wrap;
+  }
+  if(hasComment){
+    /* Kommentar-Anzeige */
+    const wrap=mk('div','ln-comment');
+    const icon=mk('span','ln-comment-icon');icon.textContent='💬';
+    const txt=mk('span','ln-comment-text');txt.textContent=sc.lineComments[line.id];
+    const del=mk('button','ln-comment-del');del.textContent='✕';del.title='Kommentar löschen';
+    del.onmousedown=e=>e.preventDefault(); /* Verhindert blur-before-click */
+    del.onclick=()=>deleteLineComment(line.id);
+    wrap.append(icon,txt,del);
+    if(S.mode==='c'){
+      wrap.style.cursor='pointer';
+      wrap.title='Klicken zum Bearbeiten';
+      wrap.onclick=()=>openLineComment(line.id);
+    }
+    return wrap;
+  }
+  /* Modus aktiv aber kein Kommentar: dezenter Hinweis */
+  if(S.mode==='c'){
+    const hint=mk('div');
+    hint.style.cssText='margin:0 6px 4px 14px;font-size:10px;color:rgba(255,214,10,.25);font-style:italic';
+    hint.textContent='+ Kommentar hinzufügen';
+    return hint;
+  }
+  return null;
 }
 function doSearch(q){S.ui.q=q;renderScript();}
 function toggleChips(){
@@ -4072,7 +4199,7 @@ function showToast(msg,type='ok'){
    Tippt man ihn an, wechselt er zwischen den drei Modi:
    Normal (✱) → Dialog-Marker (🎙) → Geräusch-Marker (🔊) → Normal
 ═══════════════════════════════════════════════════════════════ */
-const FAB_CYCLE=[null,'d','g','w'];
+const FAB_CYCLE=[null,'d','g','w','c'];
 function cycleFAB(){
   const i=FAB_CYCLE.indexOf(S.mode);
   setMode(FAB_CYCLE[(i+1)%FAB_CYCLE.length]);
@@ -4089,6 +4216,9 @@ function updateFAB(){
   }else if(S.mode==='w'){
     btn.textContent='✏';btn.className='w';
     lbl.textContent='Wort-Marker aktiv';lbl.classList.add('on');
+  }else if(S.mode==='c'){
+    btn.textContent='💬';btn.className='c';
+    lbl.textContent='Kommentar-Modus aktiv';lbl.classList.add('on');
   }else{
     btn.textContent='✱';btn.className='';
     lbl.textContent='';lbl.classList.remove('on');
@@ -4171,6 +4301,7 @@ document.addEventListener('keydown',e=>{
   if(e.key==='1')setMode('d');
   if(e.key==='2')setMode('g');
   if(e.key==='3')setMode('w');
+  if(e.key==='4')setMode('c');
 });
 
 /* Close sidebar when clicking content on mobile */
